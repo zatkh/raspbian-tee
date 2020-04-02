@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 // Definitions to add I2S audio from the Toshiba TC358743 HDMI to CSI2 bridge.
 // Requires tc358743 overlay to have been loaded to actually function.
 /dts-v1/;

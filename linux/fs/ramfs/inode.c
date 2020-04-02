@@ -98,8 +98,14 @@ struct inode *ramfs_get_inode(struct super_block *sb,
  * File creation. Allocate an inode, and we're done..
  */
 /* SMP-safe */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 ramfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+#else
+static int
+ramfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev,void* label)
+#endif
 {
 	struct inode * inode = ramfs_get_inode(dir->i_sb, dir, mode, dev);
 	int error = -ENOSPC;
@@ -113,17 +119,26 @@ ramfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 	return error;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ramfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
+
+#else
+static int ramfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode,void* label)
+#endif
+
 {
-	int retval = ramfs_mknod(dir, dentry, mode | S_IFDIR, 0);
+	int retval = ramfs_mknod(dir, dentry, mode | S_IFDIR, 0,NULL);
 	if (!retval)
 		inc_nlink(dir);
 	return retval;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ramfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
+#else
+static int ramfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl,void* label)
+#endif
 {
-	return ramfs_mknod(dir, dentry, mode | S_IFREG, 0);
+	return ramfs_mknod(dir, dentry, mode | S_IFREG, 0,NULL);
 }
 
 static int ramfs_symlink(struct inode * dir, struct dentry *dentry, const char * symname)

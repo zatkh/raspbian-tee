@@ -3,7 +3,7 @@
 
 / {
 	chosen {
-		bootargs = "";
+		bootargs = "coherent_pool=1M";
 		/delete-property/ stdout-path;
 	};
 
@@ -159,29 +159,6 @@
 		cam0-led-ctrl;
 		cam0-led;
 	};
-};
-
-/* Configure and use the auxilliary interrupt controller */
-
-&aux {
-	interrupts = <1 29>;
-	interrupt-controller;
-	#interrupt-cells = <1>;
-};
-
-&uart1 {
-	interrupt-parent = <&aux>;
-	interrupts = <0>;
-};
-
-&spi1 {
-	interrupt-parent = <&aux>;
-	interrupts = <1>;
-};
-
-&spi2 {
-	interrupt-parent = <&aux>;
-	interrupts = <2>;
 };
 
 &vc4 {

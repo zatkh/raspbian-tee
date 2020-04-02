@@ -33,6 +33,8 @@
 #define SMICS 0x0
 #define SMICS_INTERRUPTS (BIT(9) | BIT(10) | BIT(11))
 
+#define vc4_crtc vc4_kms_crtc
+#define to_vc4_crtc to_vc4_kms_crtc
 struct vc4_crtc {
 	struct drm_crtc base;
 	struct drm_encoder *encoder;
@@ -158,14 +160,14 @@ static void vc4_primary_plane_atomic_update(struct drm_plane *plane,
 		WARN_ON_ONCE(vc4_plane->pitch != fb->pitches[0]);
 	}
 
-	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] primary update %dx%d@%d +%d,%d 0x%08x/%d\n",
+	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] primary update %dx%d@%d +%d,%d 0x%pad/%d\n",
 			 plane->base.id, plane->name,
 			 state->crtc_w,
 			 state->crtc_h,
 			 bpp,
 			 state->crtc_x,
 			 state->crtc_y,
-			 bo->paddr + fb->offsets[0],
+			 &fbinfo->base,
 			 fb->pitches[0]);
 
 	ret = rpi_firmware_transaction(vc4->firmware,
@@ -191,10 +193,11 @@ static void vc4_cursor_plane_atomic_update(struct drm_plane *plane,
 					   struct drm_plane_state *old_state)
 {
 	struct vc4_dev *vc4 = to_vc4_dev(plane->dev);
-	struct vc4_crtc *vc4_crtc = to_vc4_crtc(plane->crtc);
 	struct drm_plane_state *state = plane->state;
+	struct vc4_crtc *vc4_crtc = to_vc4_crtc(state->crtc);
 	struct drm_framebuffer *fb = state->fb;
 	struct drm_gem_cma_object *bo = drm_fb_cma_get_gem_obj(fb, 0);
+	dma_addr_t addr = bo->paddr + fb->offsets[0];
 	int ret;
 	u32 packet_state[] = {
 		state->crtc->state->active,
@@ -204,13 +207,13 @@ static void vc4_cursor_plane_atomic_update(struct drm_plane *plane,
 	};
 	WARN_ON_ONCE(fb->pitches[0] != state->crtc_w * 4);
 
-	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] update %dx%d cursor at %d,%d (0x%08x/%d)",
+	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] update %dx%d cursor at %d,%d (0x%pad/%d)",
 			 plane->base.id, plane->name,
 			 state->crtc_w,
 			 state->crtc_h,
 			 state->crtc_x,
 			 state->crtc_y,
-			 bo->paddr + fb->offsets[0],
+			 &addr,
 			 fb->pitches[0]);
 
 	/* add on the top/left offsets when overscan is active */
@@ -236,7 +239,7 @@ static void vc4_cursor_plane_atomic_update(struct drm_plane *plane,
 	    fb != old_state->fb) {
 		u32 packet_info[] = { state->crtc_w, state->crtc_h,
 				      0, /* unused */
-				      bo->paddr + fb->offsets[0],
+				      addr,
 				      0, 0, /* hotx, hoty */};
 
 		ret = rpi_firmware_property(vc4->firmware,
@@ -273,7 +276,7 @@ static int vc4_plane_atomic_check(struct drm_plane *plane,
 
 static void vc4_plane_destroy(struct drm_plane *plane)
 {
-	drm_plane_helper_disable(plane);
+	drm_plane_helper_disable(plane, NULL);
 	drm_plane_cleanup(plane);
 }
 
@@ -591,7 +594,7 @@ static struct drm_connector *vc4_fkms_connector_init(struct drm_device *dev,
 	connector->interlace_allowed = 0;
 	connector->doublescan_allowed = 0;
 
-	drm_mode_connector_attach_encoder(connector, encoder);
+	drm_connector_attach_encoder(connector, encoder);
 
 	return connector;
 
@@ -679,8 +682,6 @@ static int vc4_fkms_bind(struct device *dev, struct device *master, void *data)
 	drm_crtc_init_with_planes(drm, crtc, primary_plane, cursor_plane,
 				  &vc4_crtc_funcs, NULL);
 	drm_crtc_helper_add(crtc, &vc4_crtc_helper_funcs);
-	primary_plane->crtc = crtc;
-	cursor_plane->crtc = crtc;
 
 	vc4_encoder = devm_kzalloc(dev, sizeof(*vc4_encoder), GFP_KERNEL);
 	if (!vc4_encoder)

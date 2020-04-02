@@ -15,6 +15,25 @@ typedef struct {
 #ifdef CONFIG_VDSO
 	unsigned long	vdso;
 #endif
+#ifdef CONFIG_BINFMT_ELF_FDPIC
+	unsigned long	exec_fdpic_loadmap;
+	unsigned long	interp_fdpic_loadmap;
+#endif
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	/*
+	 * Each bit represents one protection key.
+	 * bit set   -> key allocated
+	 * bit unset -> key available for allocation
+	 */
+	u32 udom_allocation_map;
+	s16 execute_only_udom; /* udom holding execute-only protection */
+	s16 read_only_udom ; /* udom holding read-only protection */
+	s16 write_only_udom ; /* udom holding write-only protection */
+	
+#endif
+
 } mm_context_t;
 
 #ifdef CONFIG_CPU_HAS_ASID
@@ -34,6 +53,10 @@ typedef struct {
  */
 typedef struct {
 	unsigned long	end_brk;
+#ifdef CONFIG_BINFMT_ELF_FDPIC
+	unsigned long	exec_fdpic_loadmap;
+	unsigned long	interp_fdpic_loadmap;
+#endif
 } mm_context_t;
 
 #endif

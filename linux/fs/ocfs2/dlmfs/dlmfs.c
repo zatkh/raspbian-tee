@@ -71,7 +71,7 @@ struct workqueue_struct *user_dlm_worker;
  * Over time, dlmfs has added some features that were not part of the
  * initial ABI.  Unfortunately, some of these features are not detectable
  * via standard usage.  For example, Linux's default poll always returns
- * POLLIN, so there is no way for a caller of poll(2) to know when dlmfs
+ * EPOLLIN, so there is no way for a caller of poll(2) to know when dlmfs
  * added poll support.  Instead, we provide this list of new capabilities.
  *
  * Capabilities is a read-only attribute.  We do it as a module parameter
@@ -83,18 +83,18 @@ struct workqueue_struct *user_dlm_worker;
  * interaction.
  *
  * Capabilities:
- * - bast	: POLLIN against the file descriptor of a held lock
+ * - bast	: EPOLLIN against the file descriptor of a held lock
  *		  signifies a bast fired on the lock.
  */
 #define DLMFS_CAPABILITIES "bast stackglue"
 static int param_set_dlmfs_capabilities(const char *val,
-					struct kernel_param *kp)
+					const struct kernel_param *kp)
 {
 	printk(KERN_ERR "%s: readonly parameter\n", kp->name);
 	return -EINVAL;
 }
 static int param_get_dlmfs_capabilities(char *buffer,
-					struct kernel_param *kp)
+					const struct kernel_param *kp)
 {
 	return strlcpy(buffer, DLMFS_CAPABILITIES,
 		       strlen(DLMFS_CAPABILITIES) + 1);
@@ -220,9 +220,9 @@ static int dlmfs_file_setattr(struct dentry *dentry, struct iattr *attr)
 	return 0;
 }
 
-static unsigned int dlmfs_file_poll(struct file *file, poll_table *wait)
+static __poll_t dlmfs_file_poll(struct file *file, poll_table *wait)
 {
-	int event = 0;
+	__poll_t event = 0;
 	struct inode *inode = file_inode(file);
 	struct dlmfs_inode_private *ip = DLMFS_I(inode);
 
@@ -230,7 +230,7 @@ static unsigned int dlmfs_file_poll(struct file *file, poll_table *wait)
 
 	spin_lock(&ip->ip_lockres.l_lock);
 	if (ip->ip_lockres.l_flags & USER_LOCK_BLOCKED)
-		event = POLLIN | POLLRDNORM;
+		event = EPOLLIN | EPOLLRDNORM;
 	spin_unlock(&ip->ip_lockres.l_lock);
 
 	return event;
@@ -463,9 +463,17 @@ static struct inode *dlmfs_get_inode(struct inode *parent,
  * File creation. Allocate an inode, and we're done..
  */
 /* SMP-safe */
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dlmfs_mkdir(struct inode * dir,
 		       struct dentry * dentry,
 		       umode_t mode)
+#else
+static int dlmfs_mkdir(struct inode * dir,
+		       struct dentry * dentry,
+		       umode_t mode,void* label)
+#endif
 {
 	int status;
 	struct inode *inode = NULL;
@@ -510,11 +518,18 @@ bail:
 		iput(inode);
 	return status;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dlmfs_create(struct inode *dir,
 			struct dentry *dentry,
 			umode_t mode,
 			bool excl)
+#else
+static int dlmfs_create(struct inode *dir,
+			struct dentry *dentry,
+			umode_t mode,
+			bool excl,void* label)
+#endif
+
 {
 	int status = 0;
 	struct inode *inode;
@@ -670,7 +685,6 @@ static void __exit exit_dlmfs_fs(void)
 {
 	unregister_filesystem(&dlmfs_fs_type);
 
-	flush_workqueue(user_dlm_worker);
 	destroy_workqueue(user_dlm_worker);
 
 	/*

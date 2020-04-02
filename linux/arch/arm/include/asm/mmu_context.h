@@ -33,6 +33,16 @@ static inline int
 init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
 	atomic64_set(&mm->context.id, 0);
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+		/* pkey 0 is the default and allocated implicitly */
+		mm->context.udom_allocation_map = 0xf;
+		/* -1 means unallocated or invalid */
+		mm->context.execute_only_udom = -1;
+		mm->context.read_only_udom = -1;
+		mm->context.write_only_udom = -1;
+
+	
+#endif
 	return 0;
 }
 
@@ -98,6 +108,16 @@ static inline void finish_arch_post_lock_switch(void)
 static inline int
 init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+		/* pkey 0 is the default and allocated implicitly */
+		mm->context.udom_allocation_map = 0xf;
+		/* -1 means unallocated or invalid */
+		mm->context.execute_only_udom = -1;
+		mm->context.read_only_udom = -1;
+		mm->context.write_only_udom = -1;
+	
+#endif
+
 	return 0;
 }
 

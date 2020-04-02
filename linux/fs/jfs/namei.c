@@ -72,8 +72,14 @@ static inline void free_ea_wmap(struct inode *inode)
  * RETURN:	Errors from subroutines
  *
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jfs_create(struct inode *dip, struct dentry *dentry, umode_t mode,
 		bool excl)
+#else
+static int jfs_create(struct inode *dip, struct dentry *dentry, umode_t mode,
+		bool excl,void* label)
+#endif		
 {
 	int rc = 0;
 	tid_t tid;		/* transaction id */
@@ -175,8 +181,7 @@ static int jfs_create(struct inode *dip, struct dentry *dentry, umode_t mode,
 	if (rc) {
 		free_ea_wmap(ip);
 		clear_nlink(ip);
-		unlock_new_inode(ip);
-		iput(ip);
+		discard_new_inode(ip);
 	} else {
 		d_instantiate_new(dentry, ip);
 	}
@@ -206,7 +211,12 @@ static int jfs_create(struct inode *dip, struct dentry *dentry, umode_t mode,
  * note:
  * EACCESS: user needs search+write permission on the parent directory
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jfs_mkdir(struct inode *dip, struct dentry *dentry, umode_t mode)
+
+#else
+static int jfs_mkdir(struct inode *dip, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	int rc = 0;
 	tid_t tid;		/* transaction id */
@@ -309,8 +319,7 @@ static int jfs_mkdir(struct inode *dip, struct dentry *dentry, umode_t mode)
 	if (rc) {
 		free_ea_wmap(ip);
 		clear_nlink(ip);
-		unlock_new_inode(ip);
-		iput(ip);
+		discard_new_inode(ip);
 	} else {
 		d_instantiate_new(dentry, ip);
 	}
@@ -1054,8 +1063,7 @@ static int jfs_symlink(struct inode *dip, struct dentry *dentry,
 	if (rc) {
 		free_ea_wmap(ip);
 		clear_nlink(ip);
-		unlock_new_inode(ip);
-		iput(ip);
+		discard_new_inode(ip);
 	} else {
 		d_instantiate_new(dentry, ip);
 	}
@@ -1360,8 +1368,14 @@ static int jfs_rename(struct inode *old_dir, struct dentry *old_dentry,
  *
  * FUNCTION:	Create a special file (device)
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jfs_mknod(struct inode *dir, struct dentry *dentry,
 		umode_t mode, dev_t rdev)
+#else
+static int jfs_mknod(struct inode *dir, struct dentry *dentry,
+		umode_t mode, dev_t rdev,void* label)
+#endif		
 {
 	struct jfs_inode_info *jfs_ip;
 	struct btstack btstack;
@@ -1441,8 +1455,7 @@ static int jfs_mknod(struct inode *dir, struct dentry *dentry,
 	if (rc) {
 		free_ea_wmap(ip);
 		clear_nlink(ip);
-		unlock_new_inode(ip);
-		iput(ip);
+		discard_new_inode(ip);
 	} else {
 		d_instantiate_new(dentry, ip);
 	}

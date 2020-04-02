@@ -17,10 +17,10 @@
 #unzip 2015-11-21-raspbian-jessie.zippi
 
 IMG= $1 #2015-11-21-raspbian-jessie.img
-BOOT=/media/zt/boot/
-FS=/media/zt/rootfs/
+BOOT=/home/zt/boot/
+FS=/home/zt/rootfs/
 LINUX_BOOT_DIR=$PWD/arch/arm/boot
-LINUX_MODULES_DIR=$PWD/../out/rootfs/lib/modules/4.14.98-v7/
+LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.42-v7/
 
 
 #sudo mount -o loop,offset=4194304 $IMG $BOOT

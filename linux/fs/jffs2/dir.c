@@ -24,16 +24,28 @@
 
 static int jffs2_readdir (struct file *, struct dir_context *);
 
-static int jffs2_create (struct inode *,struct dentry *,umode_t,
-			 bool);
+
 static struct dentry *jffs2_lookup (struct inode *,struct dentry *,
 				    unsigned int);
 static int jffs2_link (struct dentry *,struct inode *,struct dentry *);
 static int jffs2_unlink (struct inode *,struct dentry *);
 static int jffs2_symlink (struct inode *,struct dentry *,const char *);
-static int jffs2_mkdir (struct inode *,struct dentry *,umode_t);
 static int jffs2_rmdir (struct inode *,struct dentry *);
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+static int jffs2_create (struct inode *,struct dentry *,umode_t,
+			 bool);
+static int jffs2_mkdir (struct inode *,struct dentry *,umode_t);
+
 static int jffs2_mknod (struct inode *,struct dentry *,umode_t,dev_t);
+#else
+static int jffs2_create (struct inode *,struct dentry *,umode_t,
+			 bool,void* label);
+static int jffs2_mkdir (struct inode *,struct dentry *,umode_t,void* label);
+
+static int jffs2_mknod (struct inode *,struct dentry *,umode_t,dev_t,void* label);
+#endif
+
 static int jffs2_rename (struct inode *, struct dentry *,
 			 struct inode *, struct dentry *,
 			 unsigned int);
@@ -157,8 +169,15 @@ static int jffs2_readdir(struct file *file, struct dir_context *ctx)
 /***********************************************************************/
 
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jffs2_create(struct inode *dir_i, struct dentry *dentry,
 			umode_t mode, bool excl)
+#else
+static int jffs2_create(struct inode *dir_i, struct dentry *dentry,
+			umode_t mode, bool excl,void* label)
+#endif
+
 {
 	struct jffs2_raw_inode *ri;
 	struct jffs2_inode_info *f, *dir_f;
@@ -227,7 +246,7 @@ static int jffs2_unlink(struct inode *dir_i, struct dentry *dentry)
 	struct jffs2_inode_info *dir_f = JFFS2_INODE_INFO(dir_i);
 	struct jffs2_inode_info *dead_f = JFFS2_INODE_INFO(d_inode(dentry));
 	int ret;
-	uint32_t now = get_seconds();
+	uint32_t now = JFFS2_NOW();
 
 	ret = jffs2_do_unlink(c, dir_f, dentry->d_name.name,
 			      dentry->d_name.len, dead_f, now);
@@ -260,7 +279,7 @@ static int jffs2_link (struct dentry *old_dentry, struct inode *dir_i, struct de
 	type = (d_inode(old_dentry)->i_mode & S_IFMT) >> 12;
 	if (!type) type = DT_REG;
 
-	now = get_seconds();
+	now = JFFS2_NOW();
 	ret = jffs2_do_link(c, dir_f, f->inocache->ino, type, dentry->d_name.name, dentry->d_name.len, now);
 
 	if (!ret) {
@@ -400,7 +419,7 @@ static int jffs2_symlink (struct inode *dir_i, struct dentry *dentry, const char
 	rd->pino = cpu_to_je32(dir_i->i_ino);
 	rd->version = cpu_to_je32(++dir_f->highest_version);
 	rd->ino = cpu_to_je32(inode->i_ino);
-	rd->mctime = cpu_to_je32(get_seconds());
+	rd->mctime = cpu_to_je32(JFFS2_NOW());
 	rd->nsize = namelen;
 	rd->type = DT_LNK;
 	rd->node_crc = cpu_to_je32(crc32(0, rd, sizeof(*rd)-8));
@@ -438,7 +457,13 @@ static int jffs2_symlink (struct inode *dir_i, struct dentry *dentry, const char
 }
 
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jffs2_mkdir (struct inode *dir_i, struct dentry *dentry, umode_t mode)
+
+#else
+static int jffs2_mkdir (struct inode *dir_i, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct jffs2_inode_info *f, *dir_f;
 	struct jffs2_sb_info *c;
@@ -543,7 +568,7 @@ static int jffs2_mkdir (struct inode *dir_i, struct dentry *dentry, umode_t mode
 	rd->pino = cpu_to_je32(dir_i->i_ino);
 	rd->version = cpu_to_je32(++dir_f->highest_version);
 	rd->ino = cpu_to_je32(inode->i_ino);
-	rd->mctime = cpu_to_je32(get_seconds());
+	rd->mctime = cpu_to_je32(JFFS2_NOW());
 	rd->nsize = namelen;
 	rd->type = DT_DIR;
 	rd->node_crc = cpu_to_je32(crc32(0, rd, sizeof(*rd)-8));
@@ -588,7 +613,7 @@ static int jffs2_rmdir (struct inode *dir_i, struct dentry *dentry)
 	struct jffs2_inode_info *f = JFFS2_INODE_INFO(d_inode(dentry));
 	struct jffs2_full_dirent *fd;
 	int ret;
-	uint32_t now = get_seconds();
+	uint32_t now = JFFS2_NOW();
 
 	for (fd = f->dents ; fd; fd = fd->next) {
 		if (fd->ino)
@@ -604,8 +629,12 @@ static int jffs2_rmdir (struct inode *dir_i, struct dentry *dentry)
 	}
 	return ret;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int jffs2_mknod (struct inode *dir_i, struct dentry *dentry, umode_t mode, dev_t rdev)
+
+#else
+static int jffs2_mknod (struct inode *dir_i, struct dentry *dentry, umode_t mode, dev_t rdev,void* label)
+#endif
 {
 	struct jffs2_inode_info *f, *dir_f;
 	struct jffs2_sb_info *c;
@@ -712,7 +741,7 @@ static int jffs2_mknod (struct inode *dir_i, struct dentry *dentry, umode_t mode
 	rd->pino = cpu_to_je32(dir_i->i_ino);
 	rd->version = cpu_to_je32(++dir_f->highest_version);
 	rd->ino = cpu_to_je32(inode->i_ino);
-	rd->mctime = cpu_to_je32(get_seconds());
+	rd->mctime = cpu_to_je32(JFFS2_NOW());
 	rd->nsize = namelen;
 
 	/* XXX: This is ugly. */
@@ -797,7 +826,7 @@ static int jffs2_rename (struct inode *old_dir_i, struct dentry *old_dentry,
 	type = (d_inode(old_dentry)->i_mode & S_IFMT) >> 12;
 	if (!type) type = DT_REG;
 
-	now = get_seconds();
+	now = JFFS2_NOW();
 	ret = jffs2_do_link(c, JFFS2_INODE_INFO(new_dir_i),
 			    d_inode(old_dentry)->i_ino, type,
 			    new_dentry->d_name.name, new_dentry->d_name.len, now);

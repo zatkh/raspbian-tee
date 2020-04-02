@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 // Definitions for Analog Devices ADV728[0|1|2]-M video to CSI2 bridges on VC
 // I2C bus
 

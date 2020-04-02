@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * BCM2835 Unicam capture Driver
  *
@@ -760,11 +761,7 @@ static int unicam_try_fmt_vid_cap(struct file *file, void *priv,
 		unicam_info(dev, "Sensor trying to send interlaced video - results may be unpredictable\n");
 
 	v4l2_fill_pix_format(&f->fmt.pix, &sd_fmt.format);
-	/*
-	 * Use current colorspace for now, it will get
-	 * updated properly during s_fmt
-	 */
-	f->fmt.pix.colorspace = dev->v_fmt.fmt.pix.colorspace;
+
 	return unicam_calc_format_size_bpl(dev, fmt, f);
 }
 
@@ -1240,11 +1237,6 @@ static int unicam_start_streaming(struct vb2_queue *vq, unsigned int count)
 		unicam_err(dev, "Failed to enable CSI clock: %d\n", ret);
 		goto err_pm_put;
 	}
-	ret = v4l2_subdev_call(dev->sensor, core, s_power, 1);
-	if (ret < 0 && ret != -ENOIOCTLCMD) {
-		unicam_err(dev, "power on failed in subdev\n");
-		goto err_clock_unprepare;
-	}
 	dev->streaming = 1;
 
 	unicam_start_rx(dev, addr);
@@ -1259,8 +1251,6 @@ static int unicam_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 err_disable_unicam:
 	unicam_disable(dev);
-	v4l2_subdev_call(dev->sensor, core, s_power, 0);
-err_clock_unprepare:
 	clk_disable_unprepare(dev->clock);
 err_pm_put:
 	unicam_runtime_put(dev);
@@ -1308,11 +1298,6 @@ static void unicam_stop_streaming(struct vb2_queue *vq)
 	dev->cur_frm = NULL;
 	dev->next_frm = NULL;
 	spin_unlock_irqrestore(&dev->dma_queue_lock, flags);
-
-	if (v4l2_subdev_has_op(dev->sensor, core, s_power)) {
-		if (v4l2_subdev_call(dev->sensor, core, s_power, 0) < 0)
-			unicam_err(dev, "power off failed in subdev\n");
-	}
 
 	clk_disable_unprepare(dev->clock);
 	unicam_runtime_put(dev);
@@ -1419,6 +1404,84 @@ static int unicam_g_edid(struct file *file, void *priv, struct v4l2_edid *edid)
 	struct unicam_device *dev = video_drvdata(file);
 
 	return v4l2_subdev_call(dev->sensor, pad, get_edid, edid);
+}
+
+static int unicam_enum_framesizes(struct file *file, void *priv,
+				  struct v4l2_frmsizeenum *fsize)
+{
+	struct unicam_device *dev = video_drvdata(file);
+	const struct unicam_fmt *fmt;
+	struct v4l2_subdev_frame_size_enum fse;
+	int ret;
+
+	/* check for valid format */
+	fmt = find_format_by_pix(dev, fsize->pixel_format);
+	if (!fmt) {
+		unicam_dbg(3, dev, "Invalid pixel code: %x\n",
+			   fsize->pixel_format);
+		return -EINVAL;
+	}
+
+	fse.index = fsize->index;
+	fse.pad = 0;
+	fse.code = fmt->code;
+
+	ret = v4l2_subdev_call(dev->sensor, pad, enum_frame_size, NULL, &fse);
+	if (ret)
+		return ret;
+
+	unicam_dbg(1, dev, "%s: index: %d code: %x W:[%d,%d] H:[%d,%d]\n",
+		   __func__, fse.index, fse.code, fse.min_width, fse.max_width,
+		   fse.min_height, fse.max_height);
+
+	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
+	fsize->discrete.width = fse.max_width;
+	fsize->discrete.height = fse.max_height;
+
+	return 0;
+}
+
+static int unicam_enum_frameintervals(struct file *file, void *priv,
+				      struct v4l2_frmivalenum *fival)
+{
+	struct unicam_device *dev = video_drvdata(file);
+	const struct unicam_fmt *fmt;
+	struct v4l2_subdev_frame_interval_enum fie = {
+		.index = fival->index,
+		.width = fival->width,
+		.height = fival->height,
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
+	int ret;
+
+	fmt = find_format_by_pix(dev, fival->pixel_format);
+	if (!fmt)
+		return -EINVAL;
+
+	fie.code = fmt->code;
+	ret = v4l2_subdev_call(dev->sensor, pad, enum_frame_interval,
+			       NULL, &fie);
+	if (ret)
+		return ret;
+
+	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
+	fival->discrete = fie.interval;
+
+	return 0;
+}
+
+static int unicam_g_parm(struct file *file, void *fh, struct v4l2_streamparm *a)
+{
+	struct unicam_device *dev = video_drvdata(file);
+
+	return v4l2_g_parm_cap(video_devdata(file), dev->sensor, a);
+}
+
+static int unicam_s_parm(struct file *file, void *fh, struct v4l2_streamparm *a)
+{
+	struct unicam_device *dev = video_drvdata(file);
+
+	return v4l2_s_parm_cap(video_devdata(file), dev->sensor, a);
 }
 
 static int unicam_g_dv_timings(struct file *file, void *priv,
@@ -1546,11 +1609,63 @@ static const struct vb2_ops unicam_video_qops = {
 	.stop_streaming		= unicam_stop_streaming,
 };
 
+/*
+ * unicam_open : This function is based on the v4l2_fh_open helper function.
+ * It has been augmented to handle sensor subdevice power management,
+ */
+static int unicam_open(struct file *file)
+{
+	struct unicam_device *dev = video_drvdata(file);
+	int ret;
+
+	mutex_lock(&dev->lock);
+
+	ret = v4l2_fh_open(file);
+	if (ret) {
+		unicam_err(dev, "v4l2_fh_open failed\n");
+		goto unlock;
+	}
+
+	if (!v4l2_fh_is_singular_file(file))
+		goto unlock;
+
+	ret = v4l2_subdev_call(dev->sensor, core, s_power, 1);
+	if (ret < 0 && ret != -ENOIOCTLCMD) {
+		v4l2_fh_release(file);
+		goto unlock;
+	}
+
+unlock:
+	mutex_unlock(&dev->lock);
+	return ret;
+}
+
+static int unicam_release(struct file *file)
+{
+	struct unicam_device *dev = video_drvdata(file);
+	struct v4l2_subdev *sd = dev->sensor;
+	bool fh_singular;
+	int ret;
+
+	mutex_lock(&dev->lock);
+
+	fh_singular = v4l2_fh_is_singular_file(file);
+
+	ret = _vb2_fop_release(file, NULL);
+
+	if (fh_singular)
+		v4l2_subdev_call(sd, core, s_power, 0);
+
+	mutex_unlock(&dev->lock);
+
+	return ret;
+}
+
 /* unicam capture driver file operations */
 static const struct v4l2_file_operations unicam_fops = {
 	.owner		= THIS_MODULE,
-	.open           = v4l2_fh_open,
-	.release        = vb2_fop_release,
+	.open           = unicam_open,
+	.release        = unicam_release,
 	.read		= vb2_fop_read,
 	.poll		= vb2_fop_poll,
 	.unlocked_ioctl	= video_ioctl2,
@@ -1575,6 +1690,12 @@ static const struct v4l2_ioctl_ops unicam_ioctl_ops = {
 
 	.vidioc_g_edid			= unicam_g_edid,
 	.vidioc_s_edid			= unicam_s_edid,
+
+	.vidioc_enum_framesizes		= unicam_enum_framesizes,
+	.vidioc_enum_frameintervals	= unicam_enum_frameintervals,
+
+	.vidioc_g_parm			= unicam_g_parm,
+	.vidioc_s_parm			= unicam_s_parm,
 
 	.vidioc_s_dv_timings		= unicam_s_dv_timings,
 	.vidioc_g_dv_timings		= unicam_g_dv_timings,
@@ -1813,6 +1934,16 @@ static int unicam_probe_complete(struct unicam_device *unicam)
 		v4l2_disable_ioctl(&unicam->video_dev, VIDIOC_ENUM_DV_TIMINGS);
 		v4l2_disable_ioctl(&unicam->video_dev, VIDIOC_QUERY_DV_TIMINGS);
 	}
+	if (!v4l2_subdev_has_op(unicam->sensor, pad, enum_frame_interval))
+		v4l2_disable_ioctl(&unicam->video_dev,
+				   VIDIOC_ENUM_FRAMEINTERVALS);
+	if (!v4l2_subdev_has_op(unicam->sensor, video, g_frame_interval))
+		v4l2_disable_ioctl(&unicam->video_dev, VIDIOC_G_PARM);
+	if (!v4l2_subdev_has_op(unicam->sensor, video, s_frame_interval))
+		v4l2_disable_ioctl(&unicam->video_dev, VIDIOC_S_PARM);
+
+	if (!v4l2_subdev_has_op(unicam->sensor, pad, enum_frame_size))
+		v4l2_disable_ioctl(&unicam->video_dev, VIDIOC_ENUM_FRAMESIZES);
 
 	ret = v4l2_device_register_subdev_nodes(&unicam->v4l2_dev);
 	if (ret) {
@@ -1832,6 +1963,11 @@ static int unicam_async_complete(struct v4l2_async_notifier *notifier)
 
 	return unicam_probe_complete(unicam);
 }
+
+static const struct v4l2_async_notifier_operations unicam_async_ops = {
+	.bound = unicam_async_bound,
+	.complete = unicam_async_complete,
+};
 
 static int of_unicam_connect_subdevs(struct unicam_device *dev)
 {
@@ -1876,7 +2012,7 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 	}
 	unicam_dbg(3, dev, "sensor_node is %s\n", sensor_node->name);
 	asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-	asd->match.fwnode.fwnode = of_fwnode_handle(sensor_node);
+	asd->match.fwnode = of_fwnode_handle(sensor_node);
 
 	remote_ep = of_graph_get_remote_endpoint(ep_node);
 	if (!remote_ep) {
@@ -1951,8 +2087,7 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 	subdevs[0] = asd;
 	dev->notifier.subdevs = subdevs;
 	dev->notifier.num_subdevs = 1;
-	dev->notifier.bound = unicam_async_bound;
-	dev->notifier.complete = unicam_async_complete;
+	dev->notifier.ops = &unicam_async_ops;
 	ret = v4l2_async_notifier_register(&dev->v4l2_dev,
 					   &dev->notifier);
 	if (ret) {

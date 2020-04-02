@@ -65,6 +65,8 @@
 #define PTE_TYPE_EXT		(_AT(pteval_t, 3) << 0)		/* v5 */
 #define PTE_BUFFERABLE		(_AT(pteval_t, 1) << 2)
 #define PTE_CACHEABLE		(_AT(pteval_t, 1) << 3)
+#define PTE_DOMAIN(x)		(_AT(pteval_t, (x)) << 5)
+#define PTE_DOMAIN_MASK		PTE_DOMAIN(0x0f)
 
 /*
  *   - extended small page/tiny page

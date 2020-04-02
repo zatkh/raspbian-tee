@@ -22,6 +22,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
  * 02111-1307, USA.
  */
+//ZTODO PROPER LABELING
 
 #include <linux/file.h>
 #include <linux/vmalloc.h>
@@ -64,7 +65,6 @@ static int ecryptfs_inode_set(struct inode *inode, void *opaque)
 	/* i_size will be overwritten for encrypted regular files */
 	fsstack_copy_inode_size(inode, lower_inode);
 	inode->i_ino = lower_inode->i_ino;
-	inode->i_version++;
 	inode->i_mapping->a_ops = &ecryptfs_aops;
 
 	if (S_ISLNK(inode->i_mode))
@@ -187,7 +187,15 @@ ecryptfs_do_create(struct inode *directory_inode,
 
 	lower_dentry = ecryptfs_dentry_to_lower(ecryptfs_dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_create(d_inode(lower_dir_dentry), lower_dentry, mode, true);
+
+#else
+	rc = vfs_create(d_inode(lower_dir_dentry), lower_dentry, mode, true,NULL);
+
+#endif
+
 	if (rc) {
 		printk(KERN_ERR "%s: Failure to create dentry in lower fs; "
 		       "rc = [%d]\n", __func__, rc);
@@ -260,9 +268,17 @@ out:
  *
  * Returns zero on success; non-zero on error condition
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 ecryptfs_create(struct inode *directory_inode, struct dentry *ecryptfs_dentry,
 		umode_t mode, bool excl)
+#else
+static int
+ecryptfs_create(struct inode *directory_inode, struct dentry *ecryptfs_dentry,
+		umode_t mode, bool excl,void* label)
+#endif		
+
 {
 	struct inode *ecryptfs_inode;
 	int rc;
@@ -333,9 +349,6 @@ static struct dentry *ecryptfs_lookup_interpose(struct dentry *dentry,
 
 	dentry_info = kmem_cache_alloc(ecryptfs_dentry_info_cache, GFP_KERNEL);
 	if (!dentry_info) {
-		printk(KERN_ERR "%s: Out of memory whilst attempting "
-		       "to allocate ecryptfs_dentry_info struct\n",
-			__func__);
 		dput(lower_dentry);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -398,8 +411,7 @@ static struct dentry *ecryptfs_lookup(struct inode *ecryptfs_dir_inode,
 
 	mount_crypt_stat = &ecryptfs_superblock_to_private(
 				ecryptfs_dentry->d_sb)->mount_crypt_stat;
-	if (mount_crypt_stat
-	    && (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)) {
+	if (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES) {
 		rc = ecryptfs_encrypt_and_encode_filename(
 			&encrypted_and_encoded_name, &len,
 			mount_crypt_stat, name, len);
@@ -503,7 +515,11 @@ out_lock:
 	return rc;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	int rc;
 	struct dentry *lower_dentry;
@@ -511,7 +527,14 @@ static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_mkdir(d_inode(lower_dir_dentry), lower_dentry, mode);
+
+	#else
+	rc = vfs_mkdir(d_inode(lower_dir_dentry), lower_dentry, mode,NULL);
+
+	#endif
 	if (rc || d_really_is_negative(lower_dentry))
 		goto out;
 	rc = ecryptfs_interpose(lower_dentry, dentry, dir->i_sb);
@@ -550,8 +573,14 @@ static int ecryptfs_rmdir(struct inode *dir, struct dentry *dentry)
 	return rc;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+#else
+static int
+ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev,void* label)
+#endif
 {
 	int rc;
 	struct dentry *lower_dentry;
@@ -559,7 +588,15 @@ ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_mknod(d_inode(lower_dir_dentry), lower_dentry, mode, dev);
+
+	#else
+	rc = vfs_mknod(d_inode(lower_dir_dentry), lower_dentry, mode, dev,NULL);
+
+	#endif
+
 	if (rc || d_really_is_negative(lower_dentry))
 		goto out;
 	rc = ecryptfs_interpose(lower_dentry, dentry, dir->i_sb);

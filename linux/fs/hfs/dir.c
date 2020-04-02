@@ -31,21 +31,15 @@ static struct dentry *hfs_lookup(struct inode *dir, struct dentry *dentry,
 	hfs_cat_build_key(dir->i_sb, fd.search_key, dir->i_ino, &dentry->d_name);
 	res = hfs_brec_read(&fd, &rec, sizeof(rec));
 	if (res) {
-		hfs_find_exit(&fd);
-		if (res == -ENOENT) {
-			/* No such entry */
-			inode = NULL;
-			goto done;
-		}
-		return ERR_PTR(res);
+		if (res != -ENOENT)
+			inode = ERR_PTR(res);
+	} else {
+		inode = hfs_iget(dir->i_sb, &fd.search_key->cat, &rec);
+		if (!inode)
+			inode = ERR_PTR(-EACCES);
 	}
-	inode = hfs_iget(dir->i_sb, &fd.search_key->cat, &rec);
 	hfs_find_exit(&fd);
-	if (!inode)
-		return ERR_PTR(-EACCES);
-done:
-	d_add(dentry, inode);
-	return NULL;
+	return d_splice_alias(inode, dentry);
 }
 
 /*
@@ -195,8 +189,14 @@ static int hfs_dir_release(struct inode *inode, struct file *file)
  * a directory and return a corresponding inode, given the inode for
  * the directory and the name (and its length) of the new file.
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int hfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      bool excl)
+#else
+static int hfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		      bool excl,void* label)
+#endif			  
 {
 	struct inode *inode;
 	int res;
@@ -225,7 +225,12 @@ static int hfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
  * in a directory, given the inode for the parent directory and the
  * name (and its length) of the new directory.
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int hfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int hfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct inode *inode;
 	int res;

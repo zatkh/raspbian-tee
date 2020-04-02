@@ -1,17 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * namei.c - NILFS pathname lookup operations.
  *
  * Copyright (C) 2005-2008 Nippon Telegraph and Telephone Corporation.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * Modified for NILFS by Amagai Yoshiji and Ryusuke Konishi.
  */
@@ -81,8 +72,14 @@ nilfs_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
  * If the create succeeds, we fill in the inode information
  * with d_instantiate().
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			bool excl)
+#else
+static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			bool excl,void* label)
+#endif			
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;
@@ -108,8 +105,14 @@ static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nilfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+#else
+static int
+nilfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev,void* label)
+#endif
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;
@@ -149,7 +152,7 @@ static int nilfs_symlink(struct inode *dir, struct dentry *dentry,
 	if (err)
 		return err;
 
-	inode = nilfs_new_inode(dir, S_IFLNK | S_IRWXUGO);
+	inode = nilfs_new_inode(dir, S_IFLNK | 0777);
 	err = PTR_ERR(inode);
 	if (IS_ERR(inode))
 		goto out;
@@ -210,7 +213,15 @@ static int nilfs_link(struct dentry *old_dentry, struct inode *dir,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int nilfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int nilfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
+
+
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;

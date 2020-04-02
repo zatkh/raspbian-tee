@@ -20,12 +20,15 @@
 #include <linux/sched/debug.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#include <linux/security.h>
 
-#include <asm/exception.h>
+
 #include <asm/pgtable.h>
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
+#include <asm/udom.h>
+
 
 #include "fault.h"
 
@@ -167,6 +170,8 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 	if (addr > TASK_SIZE)
 		harden_branch_predictor();
 
+	clear_siginfo(&si);
+
 #ifdef CONFIG_DEBUG_USER
 	if (((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
 	    ((user_debug & UDBG_BUS)  && (sig == SIGBUS))) {
@@ -223,12 +228,12 @@ static inline bool access_error(unsigned int fsr, struct vm_area_struct *vma)
 	return vma->vm_flags & mask ? false : true;
 }
 
-static int __kprobes
+static vm_fault_t __kprobes
 __do_page_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 		unsigned int flags, struct task_struct *tsk)
 {
 	struct vm_area_struct *vma;
-	int fault;
+	vm_fault_t fault;
 
 	vma = find_vma(mm, addr);
 	fault = VM_FAULT_BADMAP;
@@ -263,7 +268,8 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	struct task_struct *tsk;
 	struct mm_struct *mm;
-	int fault, sig, code;
+	int sig, code;
+	vm_fault_t fault;
 	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	if (notify_page_fault(regs, fsr))
@@ -518,6 +524,146 @@ do_bad(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	return 1;
 }
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+/* 
+static void change_domain_access(unsigned int domain, unsigned int type)
+{
+    do {
+        struct thread_info *thread = current_thread_info();
+        unsigned int dom_ = thread->cpu_domain;
+        dom_ &= ~domain_val(domain, DOMAIN_MANAGER);
+        thread->cpu_domain = dom_ | domain_val(domain, type);
+        do {
+            __asm__ __volatile__(
+                    "mcr	p15, 0, %0, c3, c0	@ set domain"
+                    : : "r" (thread->cpu_domain));
+            isb();
+        } while (0);
+    } while (0);
+}
+*/
+
+
+
+static inline unsigned int get_pmd_domain(pmd_t *pmd)
+{
+	switch (pmd_val(*pmd) & PMD_DOMAIN_MASK) {
+	case PMD_DOMAIN(DOMAIN_KERNEL):
+		return DOMAIN_KERNEL;
+	case PMD_DOMAIN(DOMAIN_USER):
+		return DOMAIN_USER;
+	case PMD_DOMAIN(DOMAIN_IO):
+		return DOMAIN_IO;
+	case PMD_DOMAIN(DOMAIN_VECTORS):
+		return DOMAIN_VECTORS;
+	case PMD_DOMAIN(DOMAIN_SANDBOX):
+		return DOMAIN_SANDBOX;	
+	case PMD_DOMAIN(DOMAIN_TRUSTED):
+		return DOMAIN_TRUSTED;
+	case PMD_DOMAIN(DOMAIN_UNTRUSTED):
+		return DOMAIN_UNTRUSTED;
+	default:
+		return -1; //just for now we keep track of registerd domains 
+	}
+}
+
+static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+{
+	unsigned long dacr = 0;
+	unsigned int domain;
+	int domain_copy;
+	struct task_struct * s_tsk;
+	struct task_struct * d_tsk;
+	int ret_val=-1;
+    pgd_t *pgd;
+    pud_t *pud;
+    pmd_t *pmd;
+
+	printk(KERN_INFO "[do_difc_domain_fault] enter\n");
+	printk("[do_difc_domain_fault] pid = %d, tid = %d\n", task_tgid_vnr(current), task_pid_vnr(current));
+	printk("[do_difc_domain_fault] domain fault at 0x%08lx, fsr=0x%08x\n", addr, fsr);
+	printk("[do_difc_domain_fault] domain fault pc=0x%08lx, sp=0x%08lx\n", regs->ARM_pc, regs->ARM_sp);
+	
+
+/* 
+	print_symbol("PC is at %s\n", instruction_pointer(regs));
+	print_symbol("LR is at %s\n", regs->ARM_lr);
+	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
+	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
+		regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,
+		regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
+
+*/
+
+    pgd = pgd_offset(current->mm, addr);
+    pud = pud_offset(pgd, addr);
+    pmd = pmd_offset(pud, addr);
+    if (addr & SECTION_SIZE)
+       { pmd++;}
+
+	domain=get_pmd_domain(pmd);
+	domain_copy=domain;
+	if(domain<0)
+		printk("[do_difc_domain_fault] not registered domain\n");
+
+
+	printk("[do_difc_domain_fault] pmd_domain %u\n",domain);
+
+
+    dacr=get_dacr();
+		    printk("dacr=0x%lx\n", dacr);
+
+	/*
+	s_tsk = find_task_by_vpid(task_tgid_vnr(current));
+	d_tsk = find_task_by_vpid(task_pid_vnr(current));
+
+
+	if (s_tsk && d_tsk) {
+		task_lock(s_tsk);
+		task_lock(d_tsk);
+
+		ret_val=security_tasks_labels_allowed(s_tsk,d_tsk);
+
+		task_unlock(s_tsk);
+		task_unlock(d_tsk);
+
+	}
+	
+
+	//modify_domain(DOMAIN_SANDBOX,DOMAIN_CLIENT);
+	//modify_domain(DOMAIN_UNTRUSTED,DOMAIN_CLIENT);
+	
+if(ret_val==0)
+	{	
+		printk("[do_difc_domain_fault] difc check was ok, making domain(%u) accessable\n",domain);
+		modify_domain(domain_copy,DOMAIN_CLIENT);
+	}
+else
+	{
+		printk("[do_difc_domain_fault] difc check was not ok! domain(%u) remains NoAcc\n",domain);
+			do_exit(SIGKILL);
+
+	}
+
+//check dacr is changed
+	  __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+
+
+// should we do difc checking here?the problem with doing it here is we need a way to 
+// stop other threads while we make the doman accessable in case the violating thread
+// actually has a valid capabilities for accessing the domain
+*/
+while(1){} //stop here for now 
+
+    return 0;
+
+}
+
+#endif
 struct fsr_info {
 	int	(*fn)(unsigned long addr, unsigned int fsr, struct pt_regs *regs);
 	int	sig;
@@ -548,7 +694,7 @@ hook_fault_code(int nr, int (*fn)(unsigned long, unsigned int, struct pt_regs *)
 /*
  * Dispatch a data abort to the relevant handler.
  */
-asmlinkage void __exception
+asmlinkage void
 do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	const struct fsr_info *inf = fsr_info + fsr_fs(fsr);
@@ -561,6 +707,7 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		inf->name, fsr, addr);
 	show_pte(current->mm, addr);
 
+	clear_siginfo(&info);
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;
@@ -581,7 +728,7 @@ hook_ifault_code(int nr, int (*fn)(unsigned long, unsigned int, struct pt_regs *
 	ifsr_info[nr].name = name;
 }
 
-asmlinkage void __exception
+asmlinkage void
 do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 {
 	const struct fsr_info *inf = ifsr_info + fsr_fs(ifsr);
@@ -593,6 +740,7 @@ do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 	pr_alert("Unhandled prefetch abort: %s (0x%03x) at 0x%08lx\n",
 		inf->name, ifsr, addr);
 
+	clear_siginfo(&info);
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/kernel/seccomp.c
  *
@@ -6,6 +5,8 @@
  *
  * Copyright (C) 2012 Google, Inc.
  * Will Drewry <wad@chromium.org>
+ * 
+ * Copyright (C) 2016  Mickaël Salaün <mic@digikod.net>
  *
  * This defines a simple but solid secure-computing facility.
  *
@@ -14,19 +15,21 @@
  *        of Berkeley Packet Filters/Linux Socket Filters.
  */
 
-#include <linux/refcount.h>
+#include <linux/atomic.h>
 #include <linux/audit.h>
 #include <linux/compat.h>
-#include <linux/coredump.h>
-#include <linux/kmemleak.h>
 #include <linux/nospec.h>
 #include <linux/prctl.h>
 #include <linux/sched.h>
-#include <linux/sched/task_stack.h>
 #include <linux/seccomp.h>
 #include <linux/slab.h>
 #include <linux/syscalls.h>
-#include <linux/sysctl.h>
+#include <linux/bitops.h>
+#include <linux/fs.h>
+#include <linux/fs_struct.h>
+#include <linux/mount.h>
+#include <linux/namei.h>	
+#include <linux/path.h>
 
 #ifdef CONFIG_HAVE_ARCH_SECCOMP_FILTER
 #include <asm/syscall.h>
@@ -39,6 +42,14 @@
 #include <linux/security.h>
 #include <linux/tracehook.h>
 #include <linux/uaccess.h>
+#include <linux/ftrace.h>
+
+
+#ifdef CONFIG_EXTENDED_LSM
+#include <linux/kernel.h>	/* FIELD_SIZEOF() */
+
+extern struct syscall_argdesc (*seccomp_syscalls_argdesc)[];
+#endif /* CONFIG_EXTENDED_LSM */
 
 /**
  * struct seccomp_filter - container for seccomp BPF programs
@@ -47,9 +58,9 @@
  *         get/put helpers should be used when accessing an instance
  *         outside of a lifetime-guarded section.  In general, this
  *         is only needed for handling filters shared across tasks.
- * @log: true if all actions except for SECCOMP_RET_ALLOW should be logged
  * @prev: points to a previously installed, or inherited, filter
- * @prog: the BPF program to evaluate
+ * @len: the number of instructions in the program
+ * @insnsi: the BPF program instructions to evaluate
  *
  * seccomp_filter objects are organized in a tree linked via the @prev
  * pointer.  For any task, it appears to be a singly-linked list starting
@@ -62,14 +73,57 @@
  * to a task_struct (other than @usage).
  */
 struct seccomp_filter {
-	refcount_t usage;
-	bool log;
+	atomic_t usage;
 	struct seccomp_filter *prev;
 	struct bpf_prog *prog;
+	#ifdef CONFIG_EXTENDED_LSM
+	struct seccomp_filter_checker_group *checker_group; //list of args checkers
+	#endif /* CONFIG_EXTENDED_LSM */
 };
+
+
+/* Argument group attached to seccomp filters
+ *
+ * @usage keep track of the references
+ * @prev link to the previous checker_group
+ * @id is given by userland to easely check a filter statically and not
+ *     leak data from the kernel
+ * @checkers_len is the number of @checkers elements
+ * @checkers contains the checkers
+ *
+ * seccomp_filter_checker_group checkers are organized in a tree linked via the
+ * @prev pointer. For any task, it appears to be a singly-linked list starting
+ * with current->seccomp.filter->checker_group, the most recently added argument
+ * group. All filters created by a process share the argument groups created by
+ * this process until the filter creation but they can not be changed. However,
+ * multiple argument groups may share a @prev node, which results in a
+ * unidirectional tree existing in memory. They are not inherited through
+ * fork().
+ */
+#ifdef CONFIG_EXTENDED_LSM
+struct seccomp_filter_checker_group {
+	atomic_t usage;
+	struct seccomp_filter_checker_group *prev;
+	u8 id;
+	unsigned int checkers_len;
+	struct seccomp_filter_checker checkers[];
+};
+#endif /* CONFIG_EXTENDED_LSM */
 
 /* Limit any path through the tree to 256KB worth of instructions. */
 #define MAX_INSNS_PER_PATH ((1 << 18) / sizeof(struct sock_filter))
+
+static void clean_seccomp_data(struct seccomp_data *sd)
+{
+	sd->is_valid_syscall = 0;
+	sd->checker_group = 0;
+	sd->arg_matches[0] = 0ULL;
+	sd->arg_matches[1] = 0ULL;
+	sd->arg_matches[2] = 0ULL;
+	sd->arg_matches[3] = 0ULL;
+	sd->arg_matches[4] = 0ULL;
+	sd->arg_matches[5] = 0ULL;
+}
 
 /*
  * Endianness is explicitly ignored and left for BPF program authors to manage
@@ -91,6 +145,7 @@ static void populate_seccomp_data(struct seccomp_data *sd)
 	sd->args[4] = args[4];
 	sd->args[5] = args[5];
 	sd->instruction_pointer = KSTK_EIP(task);
+	clean_seccomp_data(sd);
 }
 
 /**
@@ -175,19 +230,144 @@ static int seccomp_check_filter(struct sock_filter *filter, unsigned int flen)
 	return 0;
 }
 
+
+#ifdef CONFIG_EXTENDED_LSM
+seccomp_argrule_t *get_argrule_checker(u32 check)
+{
+	switch (check) {
+	case SECCOMP_CHECK_FS_LITERAL:
+	case SECCOMP_CHECK_FS_BENEATH:
+		return seccomp_argrule_path;
+	}
+	return NULL;
+}
+
+struct syscall_argdesc *syscall_nr_to_argdesc(int nr)
+{
+	unsigned int nr_syscalls;
+	struct syscall_argdesc (*seccomp_sa)[];
+
+	{
+		nr_syscalls = NR_syscalls;
+		seccomp_sa = seccomp_syscalls_argdesc;
+	}
+
+	if (nr >= nr_syscalls || nr < 0)
+		return NULL;
+	if (unlikely(!seccomp_sa)) {
+		WARN_ON(1);
+		return NULL;
+	}
+
+	return &(*seccomp_sa)[nr];
+}
+
+/* Return the argument group address that match the group ID, or NULL
+ * otherwise.
+ */
+static struct seccomp_filter_checker_group *seccomp_update_argrule_data(
+		struct seccomp_filter *filter,
+		struct seccomp_data *sd, u16 ret_data)
+{
+	int i, j;
+	u8 match;
+	struct seccomp_filter_checker_group *walker, *checker_group = NULL;
+	const struct syscall_argdesc *argdesc;
+	struct seccomp_filter_checker *checker;
+	seccomp_argrule_t *engine;
+
+	const u8 group_id = ret_data & SECCOMP_RET_CHECKER_GROUP;
+	const u8 to_check = (ret_data & SECCOMP_RET_ARG_MATCHES) >> 8;
+
+	clean_seccomp_data(sd);
+
+	/* Find the matching group in those accessible to this filter */
+	for (walker = filter->checker_group; walker; walker = walker->prev) {
+		if (walker->id == group_id) {
+			checker_group = walker;
+			break;
+		}
+	}
+	if (!checker_group)
+		return NULL;
+	sd->checker_group = checker_group->id;
+
+	argdesc = syscall_nr_to_argdesc(sd->nr);
+	if (!argdesc)
+		return checker_group;
+	sd->is_valid_syscall = 1;
+
+	for (i = 0; i < checker_group->checkers_len; i++) {
+		checker = &checker_group->checkers[i];
+		engine = get_argrule_checker(checker->check);
+		if (engine) {
+			match = (*engine)(&argdesc->args, &sd->args, to_check, checker);
+
+			for (j = 0; j < 6; j++) {
+				sd->arg_matches[j] |=
+				    ((BIT_ULL(j) & match) >> j) << i;
+			}
+		}
+	}
+	return checker_group;
+}
+
+static void free_seccomp_argeval_cache_entry(u32 type,
+					     struct seccomp_argeval_cache_entry
+					     *entry)
+{
+	while (entry) {
+		struct seccomp_argeval_cache_entry *freeme = entry;
+
+		switch (type) {
+		case SECCOMP_OBJTYPE_PATH:
+			if (entry->fs.path) {
+				/* Pointer checks done in path_put() */
+				path_put(entry->fs.path);
+				kfree(entry->fs.path);
+			}
+			break;
+		default:
+			WARN_ON(1);
+		}
+		entry = entry->next;
+		kfree(freeme);
+	}
+}
+
+static void free_seccomp_argeval_cache(struct seccomp_argeval_cache *arg_cache)
+{
+	while (arg_cache) {
+		struct seccomp_argeval_cache *freeme = arg_cache;
+
+		free_seccomp_argeval_cache_entry(arg_cache->type, arg_cache->entry);
+		arg_cache = arg_cache->next;
+		kfree(freeme);
+	}
+}
+
+void flush_seccomp_cache(struct task_struct *tsk)
+{
+	free_seccomp_argeval_cache(tsk->seccomp.arg_cache);
+	tsk->seccomp.arg_cache = NULL;
+}
+#endif /* CONFIG_EXTENDED_LSM */
+
+static void put_seccomp_filter(struct task_struct *tsk);
+
+
 /**
- * seccomp_run_filters - evaluates all seccomp filters against @sd
- * @sd: optional seccomp data to be passed to filters
- * @match: stores struct seccomp_filter that resulted in the return value,
- *         unless filter returned SECCOMP_RET_ALLOW, in which case it will
- *         be unchanged.
+ * seccomp_run_filters - evaluates all seccomp filters against @syscall
+ * @syscall: number of the current system call
  *
  * Returns valid seccomp BPF response codes.
  */
-#define ACTION_ONLY(ret) ((s32)((ret) & (SECCOMP_RET_ACTION_FULL)))
-static u32 seccomp_run_filters(const struct seccomp_data *sd,
-			       struct seccomp_filter **match)
+static u32 seccomp_run_filters(struct seccomp_data *sd)
 {
+	#ifdef CONFIG_EXTENDED_LSM
+	struct seccomp_filter_checker_group *walker, *arg_match = NULL;
+	#endif /*CONFIG_EXTENDED_LSM */
+
 	struct seccomp_data sd_local;
 	u32 ret = SECCOMP_RET_ALLOW;
 	/* Make sure cross-thread synced filter points somewhere sane. */
@@ -196,26 +376,67 @@ static u32 seccomp_run_filters(const struct seccomp_data *sd,
 
 	/* Ensure unexpected behavior doesn't result in failing open. */
 	if (unlikely(WARN_ON(f == NULL)))
-		return SECCOMP_RET_KILL_PROCESS;
+		return SECCOMP_RET_KILL;
 
 	if (!sd) {
 		populate_seccomp_data(&sd_local);
 		sd = &sd_local;
 	}
+	#ifdef CONFIG_EXTENDED_LSM
+		/* Cleanup old (syscall-lifetime) cache */
+		flush_seccomp_cache(current);
+
+	#endif /* CONFIG_EXTENDED_LSM */
 
 	/*
 	 * All filters in the list are evaluated and the lowest BPF return
 	 * value always takes priority (ignoring the DATA).
 	 */
 	for (; f; f = f->prev) {
-		u32 cur_ret = BPF_PROG_RUN(f->prog, sd);
+	// no bpf run for now
+	//	u32 cur_ret = BPF_PROG_RUN(f->prog, (void *)sd);
+	//	if ((cur_ret & SECCOMP_RET_ACTION) < (ret & SECCOMP_RET_ACTION))
+	//		ret = cur_ret;
+		u32 cur_ret;
 
-		if (ACTION_ONLY(cur_ret) < ACTION_ONLY(ret)) {
-			ret = cur_ret;
-			*match = f;
+#ifdef CONFIG_EXTENDED_LSM
+		if (arg_match) {
+			bool found = false;
+
+			/* Find if the argument group is accessible from this filter */
+			for (walker = f->checker_group; walker; walker = walker->prev) {
+				if (walker == arg_match) {
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+				clean_seccomp_data(sd);
 		}
+#endif /* CONFIG_EXTENDED_LSM */
+		cur_ret = BPF_PROG_RUN(f->prog, (void *)sd);
+
+#ifdef CONFIG_EXTENDED_LSM
+		/* Intermediate return values */
+		if ((cur_ret & SECCOMP_RET_INTER) == SECCOMP_RET_ARG_EVAL) {
+			/* XXX: sd modification /!\ */
+			arg_match = seccomp_update_argrule_data(f, sd,
+					(cur_ret & SECCOMP_RET_DATA));
+		} else if (arg_match) {
+			clean_seccomp_data(sd);
+			arg_match = NULL;
+		}
+#endif /* CONFIG_EXTENDED_LSM */
+
+		if ((cur_ret & SECCOMP_RET_INTER) < (ret & SECCOMP_RET_ACTION))
+			ret = cur_ret;
 	}
+#ifdef CONFIG_EXTENDED_LSM
+	if (arg_match && sd != &sd_local)
+		clean_seccomp_data(sd);
+#endif /* CONFIG_EXTENDED_LSM */
 	return ret;
+	
 }
 #endif /* CONFIG_SECCOMP_FILTER */
 
@@ -399,7 +620,15 @@ static struct seccomp_filter *seccomp_prepare_filter(struct sock_fprog *fprog)
 		return ERR_PTR(ret);
 	}
 
-	refcount_set(&sfilter->usage, 1);
+// deref ch_group before sfilter set
+	#ifdef CONFIG_EXTENDED_LSM
+	sfilter->checker_group =
+		READ_ONCE(current->seccomp.checker_group);
+	if (sfilter->checker_group)
+		atomic_inc(&sfilter->checker_group->usage);
+	#endif /* CONFIG_EXTENDED_LSM */
+
+	atomic_set(&sfilter->usage, 1);
 
 	return sfilter;
 }
@@ -465,10 +694,6 @@ static long seccomp_attach_filter(unsigned int flags,
 			return ret;
 	}
 
-	/* Set log flag, if present. */
-	if (flags & SECCOMP_FILTER_FLAG_LOG)
-		filter->log = true;
-
 	/*
 	 * If there is an existing filter, make it the prev and don't drop its
 	 * task reference.
@@ -483,10 +708,10 @@ static long seccomp_attach_filter(unsigned int flags,
 	return 0;
 }
 
-static void __get_seccomp_filter(struct seccomp_filter *filter)
+void __get_seccomp_filter(struct seccomp_filter *filter)
 {
 	/* Reference count is bounded by the number of total processes. */
-	refcount_inc(&filter->usage);
+	atomic_inc(&filter->usage);
 }
 
 /* get_seccomp_filter - increments the reference count of the filter on @tsk */
@@ -498,9 +723,47 @@ void get_seccomp_filter(struct task_struct *tsk)
 	__get_seccomp_filter(orig);
 }
 
+#ifdef CONFIG_EXTENDED_LSM
+/* Do not free @checker */
+static void put_seccomp_obj(struct seccomp_filter_checker *checker)
+{
+	switch (checker->type) {
+	case SECCOMP_OBJTYPE_PATH:
+		/* Pointer checks done in path_put() */
+		path_put(&checker->object_path.path);
+		break;
+	default:
+		WARN_ON(1);
+	}
+}
+
+/* Free @checker_group */
+static void put_seccomp_checker_group(struct seccomp_filter_checker_group *checker_group)
+{
+	int i;
+	struct seccomp_filter_checker_group *orig = checker_group;
+
+	/* Clean up single-reference branches iteratively. */
+	while (orig && atomic_dec_and_test(&orig->usage)) {
+		struct seccomp_filter_checker_group *freeme = orig;
+
+		for (i = 0; i < freeme->checkers_len; i++)
+			put_seccomp_obj(&freeme->checkers[i]);
+		orig = orig->prev;
+		kfree(freeme);
+	}
+}
+#endif /* CONFIG_EXTENDED_LSM */
+
+
 static inline void seccomp_filter_free(struct seccomp_filter *filter)
 {
 	if (filter) {
+
+		#ifdef CONFIG_EXTENDED_LSM
+		put_seccomp_checker_group(filter->checker_group);
+		#endif /* CONFIG_EXTENDED_LSM */
+
 		bpf_prog_destroy(filter->prog);
 		kfree(filter);
 	}
@@ -509,28 +772,33 @@ static inline void seccomp_filter_free(struct seccomp_filter *filter)
 static void __put_seccomp_filter(struct seccomp_filter *orig)
 {
 	/* Clean up single-reference branches iteratively. */
-	while (orig && refcount_dec_and_test(&orig->usage)) {
+	while (orig && atomic_dec_and_test(&orig->usage)) {
 		struct seccomp_filter *freeme = orig;
 		orig = orig->prev;
 		seccomp_filter_free(freeme);
 	}
+
 }
 
 /* put_seccomp_filter - decrements the ref count of tsk->seccomp.filter */
-void put_seccomp_filter(struct task_struct *tsk)
+static void put_seccomp_filter(struct task_struct *tsk)
 {
-	__put_seccomp_filter(tsk->seccomp.filter);
+	__put_seccomp_filter(tsk->seccomp.filter); 
+
+	//#ifdef CONFIG_EXTENDED_LSM
+	//	put_seccomp_checker_group(tsk->seccomp.checker_group);
+	//#endif /*CONFIG_EXTENDED_LSM */
 }
 
-static void seccomp_init_siginfo(siginfo_t *info, int syscall, int reason)
+
+void put_seccomp(struct task_struct *tsk)
 {
-	memset(info, 0, sizeof(*info));
-	info->si_signo = SIGSYS;
-	info->si_code = SYS_SECCOMP;
-	info->si_call_addr = (void __user *)KSTK_EIP(current);
-	info->si_errno = reason;
-	info->si_arch = syscall_get_arch();
-	info->si_syscall = syscall;
+	put_seccomp_filter(tsk);
+#ifdef CONFIG_EXTENDED_LSM
+	/* Free in that order because of referenced checkers */
+	free_seccomp_argeval_cache(tsk->seccomp.arg_cache);
+	put_seccomp_checker_group(tsk->seccomp.checker_group);
+#endif
 }
 
 /**
@@ -543,69 +811,16 @@ static void seccomp_init_siginfo(siginfo_t *info, int syscall, int reason)
 static void seccomp_send_sigsys(int syscall, int reason)
 {
 	struct siginfo info;
-	seccomp_init_siginfo(&info, syscall, reason);
+	memset(&info, 0, sizeof(info));
+	info.si_signo = SIGSYS;
+	info.si_code = SYS_SECCOMP;
+	info.si_call_addr = (void __user *)KSTK_EIP(current);
+	info.si_errno = reason;
+	info.si_arch = syscall_get_arch();
+	info.si_syscall = syscall;
 	force_sig_info(SIGSYS, &info, current);
 }
 #endif	/* CONFIG_SECCOMP_FILTER */
-
-/* For use with seccomp_actions_logged */
-#define SECCOMP_LOG_KILL_PROCESS	(1 << 0)
-#define SECCOMP_LOG_KILL_THREAD		(1 << 1)
-#define SECCOMP_LOG_TRAP		(1 << 2)
-#define SECCOMP_LOG_ERRNO		(1 << 3)
-#define SECCOMP_LOG_TRACE		(1 << 4)
-#define SECCOMP_LOG_LOG			(1 << 5)
-#define SECCOMP_LOG_ALLOW		(1 << 6)
-
-static u32 seccomp_actions_logged = SECCOMP_LOG_KILL_PROCESS |
-				    SECCOMP_LOG_KILL_THREAD  |
-				    SECCOMP_LOG_TRAP  |
-				    SECCOMP_LOG_ERRNO |
-				    SECCOMP_LOG_TRACE |
-				    SECCOMP_LOG_LOG;
-
-static inline void seccomp_log(unsigned long syscall, long signr, u32 action,
-			       bool requested)
-{
-	bool log = false;
-
-	switch (action) {
-	case SECCOMP_RET_ALLOW:
-		break;
-	case SECCOMP_RET_TRAP:
-		log = requested && seccomp_actions_logged & SECCOMP_LOG_TRAP;
-		break;
-	case SECCOMP_RET_ERRNO:
-		log = requested && seccomp_actions_logged & SECCOMP_LOG_ERRNO;
-		break;
-	case SECCOMP_RET_TRACE:
-		log = requested && seccomp_actions_logged & SECCOMP_LOG_TRACE;
-		break;
-	case SECCOMP_RET_LOG:
-		log = seccomp_actions_logged & SECCOMP_LOG_LOG;
-		break;
-	case SECCOMP_RET_KILL_THREAD:
-		log = seccomp_actions_logged & SECCOMP_LOG_KILL_THREAD;
-		break;
-	case SECCOMP_RET_KILL_PROCESS:
-	default:
-		log = seccomp_actions_logged & SECCOMP_LOG_KILL_PROCESS;
-	}
-
-	/*
-	 * Force an audit message to be emitted when the action is RET_KILL_*,
-	 * RET_LOG, or the FILTER_FLAG_LOG bit was set and the action is
-	 * allowed to be logged by the admin.
-	 */
-	if (log)
-		return __audit_seccomp(syscall, signr, action);
-
-	/*
-	 * Let the audit subsystem decide if the action should be audited based
-	 * on whether the current task itself is being audited.
-	 */
-	return audit_seccomp(syscall, signr, action);
-}
 
 /*
  * Secure computing mode 1 allows only read/write/exit/sigreturn.
@@ -632,7 +847,7 @@ static void __secure_computing_strict(int this_syscall)
 #ifdef SECCOMP_DEBUG
 	dump_stack();
 #endif
-	seccomp_log(this_syscall, SIGKILL, SECCOMP_RET_KILL_THREAD, true);
+	audit_seccomp(this_syscall, SIGKILL, SECCOMP_RET_KILL);
 	do_exit(SIGKILL);
 }
 
@@ -655,11 +870,10 @@ void secure_computing_strict(int this_syscall)
 #else
 
 #ifdef CONFIG_SECCOMP_FILTER
-static int __seccomp_filter(int this_syscall, const struct seccomp_data *sd,
+static int __seccomp_filter(int this_syscall, struct seccomp_data *sd,
 			    const bool recheck_after_trace)
 {
 	u32 filter_ret, action;
-	struct seccomp_filter *match = NULL;
 	int data;
 
 	/*
@@ -668,9 +882,9 @@ static int __seccomp_filter(int this_syscall, const struct seccomp_data *sd,
 	 */
 	rmb();
 
-	filter_ret = seccomp_run_filters(sd, &match);
+	filter_ret = seccomp_run_filters(sd);
 	data = filter_ret & SECCOMP_RET_DATA;
-	action = filter_ret & SECCOMP_RET_ACTION_FULL;
+	action = filter_ret & SECCOMP_RET_ACTION;
 
 	switch (action) {
 	case SECCOMP_RET_ERRNO:
@@ -731,54 +945,34 @@ static int __seccomp_filter(int this_syscall, const struct seccomp_data *sd,
 
 		return 0;
 
-	case SECCOMP_RET_LOG:
-		seccomp_log(this_syscall, 0, action, true);
-		return 0;
-
 	case SECCOMP_RET_ALLOW:
-		/*
-		 * Note that the "match" filter will always be NULL for
-		 * this action since SECCOMP_RET_ALLOW is the starting
-		 * state in seccomp_run_filters().
-		 */
 		return 0;
 
-	case SECCOMP_RET_KILL_THREAD:
-	case SECCOMP_RET_KILL_PROCESS:
-	default:
-		seccomp_log(this_syscall, SIGSYS, action, true);
-		/* Dump core only if this is the last remaining thread. */
-		if (action == SECCOMP_RET_KILL_PROCESS ||
-		    get_nr_threads(current) == 1) {
-			siginfo_t info;
+	case SECCOMP_RET_ARG_EVAL:
+		/* Handled in seccomp_run_filters() */
+		BUG();	
 
-			/* Show the original registers in the dump. */
-			syscall_rollback(current, task_pt_regs(current));
-			/* Trigger a manual coredump since do_exit skips it. */
-			seccomp_init_siginfo(&info, this_syscall, data);
-			do_coredump(&info);
-		}
-		if (action == SECCOMP_RET_KILL_PROCESS)
-			do_group_exit(SIGSYS);
-		else
-			do_exit(SIGSYS);
+	case SECCOMP_RET_KILL:
+	default:
+		audit_seccomp(this_syscall, SIGSYS, action);
+		do_exit(SIGSYS);
 	}
 
 	unreachable();
 
 skip:
-	seccomp_log(this_syscall, 0, action, match ? match->log : false);
+	audit_seccomp(this_syscall, 0, action);
 	return -1;
 }
 #else
-static int __seccomp_filter(int this_syscall, const struct seccomp_data *sd,
+static int __seccomp_filter(int this_syscall, struct seccomp_data *sd,
 			    const bool recheck_after_trace)
 {
 	BUG();
 }
 #endif
 
-int __secure_computing(const struct seccomp_data *sd)
+int __secure_computing(struct seccomp_data *sd)
 {
 	int mode = current->seccomp.mode;
 	int this_syscall;
@@ -902,28 +1096,161 @@ static inline long seccomp_set_mode_filter(unsigned int flags,
 }
 #endif
 
-static long seccomp_get_action_avail(const char __user *uaction)
-{
-	u32 action;
 
-	if (copy_from_user(&action, uaction, sizeof(action)))
+#ifdef CONFIG_EXTENDED_LSM
+
+/* Limit checkers number to 64 to be able to show matches with a bitmask. */
+//#define SECCOMP_CHECKERS_MAX 64
+
+#define SECCOMP_CHECKERS_MAX \
+	(FIELD_SIZEOF(struct seccomp_data, arg_matches[0]) * BITS_PER_BYTE)
+
+/* Limit arg group list and their checkers to 256KB. */
+#define SECCOMP_GROUP_CHECKERS_MAX_SIZE (1 << 18)
+
+static long seccomp_add_checker_group(unsigned int flags, const char __user *group)
+{
+	struct seccomp_checker_group kgroup;
+	struct seccomp_checker (*kcheckers)[], *user_checker;
+	struct seccomp_filter_checker_group *filter_group, *walker;
+	struct seccomp_filter_checker *kernel_obj;
+	unsigned int i;
+	unsigned long group_size, kcheckers_size, full_group_size;
+	long result;
+
+	if (!task_no_new_privs(current) &&
+	    security_capable_noaudit(current_cred(),
+				     current_user_ns(), CAP_SYS_ADMIN) != 0)
+		return -EACCES;
+	if (flags != 0 || !group)
+		return -EINVAL;
+
+#ifdef CONFIG_COMPAT
+	if (is_compat_task()) {
+		struct compat_seccomp_checker_group kgroup32;
+
+		if (copy_from_user(&kgroup32, group, sizeof(kgroup32)))
+			return -EFAULT;
+		kgroup.version = kgroup32.version;
+		kgroup.id = kgroup32.id;
+		kgroup.len = kgroup32.len;
+		kgroup.checkers = compat_ptr(kgroup32.checkers);
+	} else			/* Falls through to the if below */
+#endif /* CONFIG_COMPAT */
+	if (copy_from_user(&kgroup, group, sizeof(kgroup)))
 		return -EFAULT;
 
-	switch (action) {
-	case SECCOMP_RET_KILL_PROCESS:
-	case SECCOMP_RET_KILL_THREAD:
-	case SECCOMP_RET_TRAP:
-	case SECCOMP_RET_ERRNO:
-	case SECCOMP_RET_TRACE:
-	case SECCOMP_RET_LOG:
-	case SECCOMP_RET_ALLOW:
-		break;
-	default:
-		return -EOPNOTSUPP;
+	if (kgroup.version != 1)
+		return -EINVAL;
+	/* The group ID 0 means no evaluated checkers */
+	if (kgroup.id == 0)
+		return -EINVAL;
+	if (kgroup.len == 0)
+		return -EINVAL;
+	if (kgroup.len > SECCOMP_CHECKERS_MAX)
+		return -E2BIG;
+
+	/* Validate resulting checker_group ID and length. */
+	group_size = sizeof(*filter_group) +
+		kgroup.len * sizeof(filter_group->checkers[0]);
+	full_group_size = group_size;
+	for (walker = current->seccomp.checker_group;
+			walker; walker = walker->prev) {
+		if (walker->id == kgroup.id)
+			return -EINVAL;
+		/* TODO: add penalty? */
+		full_group_size += sizeof(*walker) +
+			walker->checkers_len * sizeof(walker->checkers[0]);
+	}
+	if (full_group_size > SECCOMP_GROUP_CHECKERS_MAX_SIZE)
+		return -ENOMEM;
+
+	kcheckers_size = kgroup.len * sizeof((*kcheckers)[0]);
+	kcheckers = kmalloc(kcheckers_size, GFP_KERNEL);
+	if (!kcheckers)
+		return -ENOMEM;
+
+#ifdef CONFIG_COMPAT
+	if (is_compat_task()) {
+		unsigned int i, kcheckers32_size;
+		struct compat_seccomp_checker (*kcheckers32)[];
+
+		kcheckers32_size = kgroup.len * sizeof((*kcheckers32)[0]);
+		kcheckers32 = kmalloc(kcheckers32_size, GFP_KERNEL);
+		if (!kcheckers32) {
+			result = -ENOMEM;
+			goto free_kcheckers;
+		}
+		if (copy_from_user(kcheckers32, kgroup.checkers, kcheckers32_size)) {
+			kfree(kcheckers32);
+			result = -EFAULT;
+			goto free_kcheckers;
+		}
+		for (i = 0; i < kgroup.len; i++) {
+			(*kcheckers)[i].check = (*kcheckers32)[i].check;
+			(*kcheckers)[i].type = (*kcheckers32)[i].type;
+			(*kcheckers)[i].len = (*kcheckers32)[i].len;
+			(*kcheckers)[i].object_path = compat_ptr((*kcheckers32)[i].checker);
+		}
+		kfree(kcheckers32);
+	} else			/* Falls through to the if below */
+#endif /* CONFIG_COMPAT */
+	if (copy_from_user(kcheckers, kgroup.checkers, kcheckers_size)) {
+		result = -EFAULT;
+		goto free_kcheckers;
 	}
 
-	return 0;
+	/* filter_group->checkers must be zeroed to correctly be freed on error */
+	filter_group = kzalloc(group_size, GFP_KERNEL);
+	if (!filter_group) {
+		result = -ENOMEM;
+		goto free_kcheckers;
+	}
+	filter_group->prev = NULL;
+	filter_group->id = kgroup.id;
+	filter_group->checkers_len = kgroup.len;
+	for (i = 0; i < filter_group->checkers_len; i++) {
+		user_checker = &(*kcheckers)[i];
+		kernel_obj = &filter_group->checkers[i];
+		switch (user_checker->check) {
+		case SECCOMP_CHECK_FS_LITERAL:
+		case SECCOMP_CHECK_FS_BENEATH:
+			kernel_obj->check = user_checker->check;
+			result =
+			    seccomp_set_argcheck_fs(user_checker, kernel_obj);
+			if (result)
+				goto free_group;
+			break;
+		default:
+			result = -EINVAL;
+			goto free_group;
+		}
+	}
+
+	atomic_set(&filter_group->usage, 1);
+	filter_group->prev = current->seccomp.checker_group;
+	/* No need to update filter_group->prev->usage because it get one
+	 * reference from this filter but lose one from
+	 * current->seccomp.checker_group.
+	 */
+	current->seccomp.checker_group = filter_group;
+	/* XXX: Return the number of groups? */
+	result = 0;
+	goto free_kcheckers;
+
+free_group:
+	for (i = 0; i < filter_group->checkers_len; i++) {
+		kernel_obj = &filter_group->checkers[i];
+		if (kernel_obj->type)
+			put_seccomp_obj(kernel_obj);
+	}
+	kfree(filter_group);
+
+free_kcheckers:
+	kfree(kcheckers);
+	return result;
 }
+#endif /* CONFIG_EXTENDED_LSM */
 
 /* Common entry point for both prctl and syscall. */
 static long do_seccomp(unsigned int op, unsigned int flags,
@@ -936,11 +1263,10 @@ static long do_seccomp(unsigned int op, unsigned int flags,
 		return seccomp_set_mode_strict();
 	case SECCOMP_SET_MODE_FILTER:
 		return seccomp_set_mode_filter(flags, uargs);
-	case SECCOMP_GET_ACTION_AVAIL:
-		if (flags != 0)
-			return -EINVAL;
-
-		return seccomp_get_action_avail(uargs);
+#ifdef CONFIG_EXTENDED_LSM
+	case SECCOMP_ADD_CHECKER_GROUP:
+		return seccomp_add_checker_group(flags, uargs);
+#endif /* CONFIG_EXTENDED_LSM */
 	default:
 		return -EINVAL;
 	}
@@ -986,7 +1312,53 @@ long prctl_set_seccomp(unsigned long seccomp_mode, char __user *filter)
 	return do_seccomp(op, 0, uargs);
 }
 
+
 #if defined(CONFIG_SECCOMP_FILTER) && defined(CONFIG_CHECKPOINT_RESTORE)
+static struct seccomp_filter *get_nth_filter(struct task_struct *task,
+					     unsigned long filter_off)
+{
+	struct seccomp_filter *orig, *filter;
+	unsigned long count;
+
+	/*
+	 * Note: this is only correct because the caller should be the (ptrace)
+	 * tracer of the task, otherwise lock_task_sighand is needed.
+	 */
+	spin_lock_irq(&task->sighand->siglock);
+
+	if (task->seccomp.mode != SECCOMP_MODE_FILTER) {
+		spin_unlock_irq(&task->sighand->siglock);
+		return ERR_PTR(-EINVAL);
+	}
+
+	orig = task->seccomp.filter;
+	__get_seccomp_filter(orig);
+	spin_unlock_irq(&task->sighand->siglock);
+
+	count = 0;
+	for (filter = orig; filter; filter = filter->prev)
+		count++;
+
+	if (filter_off >= count) {
+		filter = ERR_PTR(-ENOENT);
+		goto out;
+	}
+
+	count -= filter_off;
+	for (filter = orig; filter && count > 1; filter = filter->prev)
+		count--;
+
+	if (WARN_ON(count != 1 || !filter)) {
+		filter = ERR_PTR(-ENOENT);
+		goto out;
+	}
+
+	__get_seccomp_filter(filter);
+
+out:
+	__put_seccomp_filter(orig);
+	return filter;
+}
 long seccomp_get_filter(struct task_struct *task, unsigned long filter_off,
 			void __user *data)
 {
@@ -1057,186 +1429,40 @@ out:
 	spin_unlock_irq(&task->sighand->siglock);
 	return ret;
 }
+
+long seccomp_get_metadata(struct task_struct *task,
+			  unsigned long size, void __user *data)
+{
+	long ret;
+	struct seccomp_filter *filter;
+	struct seccomp_metadata kmd = {};
+
+	if (!capable(CAP_SYS_ADMIN) ||
+	    current->seccomp.mode != SECCOMP_MODE_DISABLED) {
+		return -EACCES;
+	}
+
+	size = min_t(unsigned long, size, sizeof(kmd));
+
+	if (size < sizeof(kmd.filter_off))
+		return -EINVAL;
+
+	if (copy_from_user(&kmd.filter_off, data, sizeof(kmd.filter_off)))
+		return -EFAULT;
+
+	filter = get_nth_filter(task, kmd.filter_off);
+	if (IS_ERR(filter))
+		return PTR_ERR(filter);
+
+	if (filter->log)
+		kmd.flags |= SECCOMP_FILTER_FLAG_LOG;
+
+	ret = size;
+	if (copy_to_user(data, &kmd, size))
+		ret = -EFAULT;
+
+	__put_seccomp_filter(filter);
+	return ret;
+}
+
 #endif
-
-#ifdef CONFIG_SYSCTL
-
-/* Human readable action names for friendly sysctl interaction */
-#define SECCOMP_RET_KILL_PROCESS_NAME	"kill_process"
-#define SECCOMP_RET_KILL_THREAD_NAME	"kill_thread"
-#define SECCOMP_RET_TRAP_NAME		"trap"
-#define SECCOMP_RET_ERRNO_NAME		"errno"
-#define SECCOMP_RET_TRACE_NAME		"trace"
-#define SECCOMP_RET_LOG_NAME		"log"
-#define SECCOMP_RET_ALLOW_NAME		"allow"
-
-static const char seccomp_actions_avail[] =
-				SECCOMP_RET_KILL_PROCESS_NAME	" "
-				SECCOMP_RET_KILL_THREAD_NAME	" "
-				SECCOMP_RET_TRAP_NAME		" "
-				SECCOMP_RET_ERRNO_NAME		" "
-				SECCOMP_RET_TRACE_NAME		" "
-				SECCOMP_RET_LOG_NAME		" "
-				SECCOMP_RET_ALLOW_NAME;
-
-struct seccomp_log_name {
-	u32		log;
-	const char	*name;
-};
-
-static const struct seccomp_log_name seccomp_log_names[] = {
-	{ SECCOMP_LOG_KILL_PROCESS, SECCOMP_RET_KILL_PROCESS_NAME },
-	{ SECCOMP_LOG_KILL_THREAD, SECCOMP_RET_KILL_THREAD_NAME },
-	{ SECCOMP_LOG_TRAP, SECCOMP_RET_TRAP_NAME },
-	{ SECCOMP_LOG_ERRNO, SECCOMP_RET_ERRNO_NAME },
-	{ SECCOMP_LOG_TRACE, SECCOMP_RET_TRACE_NAME },
-	{ SECCOMP_LOG_LOG, SECCOMP_RET_LOG_NAME },
-	{ SECCOMP_LOG_ALLOW, SECCOMP_RET_ALLOW_NAME },
-	{ }
-};
-
-static bool seccomp_names_from_actions_logged(char *names, size_t size,
-					      u32 actions_logged)
-{
-	const struct seccomp_log_name *cur;
-	bool append_space = false;
-
-	for (cur = seccomp_log_names; cur->name && size; cur++) {
-		ssize_t ret;
-
-		if (!(actions_logged & cur->log))
-			continue;
-
-		if (append_space) {
-			ret = strscpy(names, " ", size);
-			if (ret < 0)
-				return false;
-
-			names += ret;
-			size -= ret;
-		} else
-			append_space = true;
-
-		ret = strscpy(names, cur->name, size);
-		if (ret < 0)
-			return false;
-
-		names += ret;
-		size -= ret;
-	}
-
-	return true;
-}
-
-static bool seccomp_action_logged_from_name(u32 *action_logged,
-					    const char *name)
-{
-	const struct seccomp_log_name *cur;
-
-	for (cur = seccomp_log_names; cur->name; cur++) {
-		if (!strcmp(cur->name, name)) {
-			*action_logged = cur->log;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static bool seccomp_actions_logged_from_names(u32 *actions_logged, char *names)
-{
-	char *name;
-
-	*actions_logged = 0;
-	while ((name = strsep(&names, " ")) && *name) {
-		u32 action_logged = 0;
-
-		if (!seccomp_action_logged_from_name(&action_logged, name))
-			return false;
-
-		*actions_logged |= action_logged;
-	}
-
-	return true;
-}
-
-static int seccomp_actions_logged_handler(struct ctl_table *ro_table, int write,
-					  void __user *buffer, size_t *lenp,
-					  loff_t *ppos)
-{
-	char names[sizeof(seccomp_actions_avail)];
-	struct ctl_table table;
-	int ret;
-
-	if (write && !capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	memset(names, 0, sizeof(names));
-
-	if (!write) {
-		if (!seccomp_names_from_actions_logged(names, sizeof(names),
-						       seccomp_actions_logged))
-			return -EINVAL;
-	}
-
-	table = *ro_table;
-	table.data = names;
-	table.maxlen = sizeof(names);
-	ret = proc_dostring(&table, write, buffer, lenp, ppos);
-	if (ret)
-		return ret;
-
-	if (write) {
-		u32 actions_logged;
-
-		if (!seccomp_actions_logged_from_names(&actions_logged,
-						       table.data))
-			return -EINVAL;
-
-		if (actions_logged & SECCOMP_LOG_ALLOW)
-			return -EINVAL;
-
-		seccomp_actions_logged = actions_logged;
-	}
-
-	return 0;
-}
-
-static struct ctl_path seccomp_sysctl_path[] = {
-	{ .procname = "kernel", },
-	{ .procname = "seccomp", },
-	{ }
-};
-
-static struct ctl_table seccomp_sysctl_table[] = {
-	{
-		.procname	= "actions_avail",
-		.data		= (void *) &seccomp_actions_avail,
-		.maxlen		= sizeof(seccomp_actions_avail),
-		.mode		= 0444,
-		.proc_handler	= proc_dostring,
-	},
-	{
-		.procname	= "actions_logged",
-		.mode		= 0644,
-		.proc_handler	= seccomp_actions_logged_handler,
-	},
-	{ }
-};
-
-static int __init seccomp_sysctl_init(void)
-{
-	struct ctl_table_header *hdr;
-
-	hdr = register_sysctl_paths(seccomp_sysctl_path, seccomp_sysctl_table);
-	if (!hdr)
-		pr_warn("seccomp: sysctl registration failed\n");
-	else
-		kmemleak_not_leak(hdr);
-
-	return 0;
-}
-
-device_initcall(seccomp_sysctl_init)
-
-#endif /* CONFIG_SYSCTL */

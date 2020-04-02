@@ -16,14 +16,12 @@
 #include <linux/irqchip.h>
 #include <linux/of_address.h>
 #include <linux/of_fdt.h>
-#include <linux/clk/bcm2835.h>
 #include <asm/system_info.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
 #include "platsmp.h"
-#include <linux/dma-mapping.h>
 
 #define BCM2835_USB_VIRT_BASE   0xf0980000
 #define BCM2835_USB_VIRT_MPHI   0xf0006000
@@ -34,18 +32,10 @@ static void __init bcm2835_init(void)
 	u32 val;
 	u64 val64;
 
-	bcm2835_init_clocks();
-
 	if (!of_property_read_u32(np, "linux,revision", &val))
 		system_rev = val;
 	if (!of_property_read_u64(np, "linux,serial", &val64))
 		system_serial_low = val64;
-}
-
-static void __init bcm2835_init_early(void)
-{
-	/* dwc_otg needs this for bounce buffers on non-aligned transfers */
-	init_dma_coherent_pool_size(SZ_1M);
 }
 
 /*
@@ -86,7 +76,7 @@ static int __init bcm2835_map_usb(unsigned long node, const char *uname,
 	map[1].pfn = __phys_to_pfn(be32_to_cpu(reg[2]) - p2b_offset);
 	map[1].length = be32_to_cpu(reg[3]);
 	map[1].type = MT_DEVICE;
-	iotable_init(map, 2);
+		iotable_init(map, 2);
 
 	return 1;
 }
@@ -126,7 +116,6 @@ static const char * const bcm2835_compat[] = {
 DT_MACHINE_START(BCM2835, "BCM2835")
 	.map_io = bcm2835_map_io,
 	.init_machine = bcm2835_init,
-	.init_early = bcm2835_init_early,
 	.dt_compat = bcm2835_compat,
 	.smp = smp_ops(bcm2836_smp_ops),
 MACHINE_END
