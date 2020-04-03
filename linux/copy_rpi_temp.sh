@@ -19,13 +19,8 @@ IMG= $1 #2015-11-21-raspbian-jessie.img
 BOOT=/media/zt/boot
 FS=/media/zt/rootfs
 LINUX_BOOT_DIR=$PWD/arch/arm/boot
-LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.42-v7/
+LINUX_MODULES_DIR=$PWD/../out/rootfs/lib/modules/4.19.42-v7/
 
-
-#sudo mount -o loop,offset=4194304 $IMG $BOOT
-#sudo mount -o loop,offset=67108864 $IMG $FS
-#sudo mount /dev/sdb6 mnt/fat32
-#sudo mount /dev/sdb7 mnt/ext4
 
 sudo cp -R $LINUX_BOOT_DIR/dts/*.dtb $FS/boot/
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $FS/boot/overlays/
@@ -33,6 +28,12 @@ sudo cp -R $LINUX_MODULES_DIR $FS/lib/modules
 sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernely.img
 sudo cp -R  $LINUX_BOOT_DIR/dts/*.dtb $BOOT
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $BOOT/overlays/
+
+sudo cp -R $PWD/../out/boot/* $BOOT
+sudo cp -r $PWD/../out/rootfs/* $FS
+
+
+
 
 
 
