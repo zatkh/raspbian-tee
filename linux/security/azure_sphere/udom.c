@@ -197,8 +197,7 @@ SYSCALL_DEFINE5(udom_mmap_cache, unsigned long, addr, unsigned long, len,
     unsigned long, prot, unsigned long, flags,
     int, id) {
 
- // long raddr = sys_mmap_pgoff(addr, len, prot, flags, -1, 0);
-  long raddr=sys_udom_mmap_pgoff(id,addr, len, prot, flags, -1);
+  long raddr = sys_mmap_pgoff(addr, len, prot, flags, -1, 0);
   mpt_node mn = {.buf = (void*)raddr, .len = len, .prot = prot, .udom = -1, .next = NULL, .id = id};
   hash_put(id, &mn);
   //printk("udom_mmap\n");

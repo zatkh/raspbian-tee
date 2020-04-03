@@ -22,6 +22,9 @@
 #define __UAPI_AZURE_SPHERE_SECURITY_H
 #include <linux/types.h>
 #include <linux/init.h>
+#include <linux/list.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 // labels and capabilities related variables & data structs should be here
@@ -49,10 +52,13 @@ typedef capability_t* capList_t;
 //should verfy it's sandbox image before setting this, 
 //the tcb should be uniqe based on forexample hash of images signitarure
 //I'm just using random numbers here for debugging 
-#define SANDBOX_TCB  1029
+#define TEMP_DCL_TCB  1029
 #define APPMAN_TCB   4875
-#define UNTRUSTED_TCB 2938
 #define REGULAR_TCB 3847
+#define FLOATING_TCB 2938
+
+extern struct kmem_cache *tag_struct;
+
 
 struct label_struct {
     label_t sList[LABEL_LIST_LABELS]; //secrecy label
@@ -69,38 +75,81 @@ struct object_security_struct {
 	struct rw_semaphore label_change_sem; 
 };
 
-#endif /*CONFIG_EXTENDED_LSM_DIFC */
+//enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING};
+enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, EXISTS,NO_SMV_OPS};
+enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
+enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIVID,UDOM_PRIV_OPS};
+enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
+enum tag_type {TAG_CONF = 0, TAG_EXP, TAG_FLO};
 
-// Newer kernels have a good UUID framework - switch to that
-// when available
-struct azure_sphere_guid {
-    u32 data1;
-    u16 data2;
-    u16 data3;
-    u8 data4[8];
+struct tag {
+	struct list_head next;
+	unsigned long content;
+	int type;
+
 };
 
+
+struct inode_difc {
+	struct list_head slabel;
+	struct list_head ilabel;
+	int type;
+
+};
+
+
+
+struct socket_difc {
+	struct inode_difc *isp;
+	struct inode_difc *peer_isp;
+};
+#endif /*CONFIG_EXTENDED_LSM_DIFC */
+
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+typedef s64 tag_t;
+
+struct file_security_struct {
+	struct tag* seclabel; /* Secrecy label  */
+	struct mutex lock;
+};
+
+//extern size_t difc_label_change(struct file *file, const char __user *buf, 
+//			size_t size, loff_t *ppos, struct task_security_struct *tsp, enum label_types ops);
+
+//extern size_t difc_confine_task(struct file *file, const char __user *buf, 
+//				size_t size, loff_t *ppos, struct task_security_struct *tsp);
+
+#endif //CONFIG_EXTENDED_FLOATING_DIFC//
+
 // exposed through /proc/<pid>/attr/exec
-struct azure_sphere_task_cred {
-    union {
-        u8     raw_bytes[16];
-        struct azure_sphere_guid guid;
-    } component_id;
-    char   daa_tenant_id[64];
-    bool   is_app_man : 1;
-    bool   job_control_allowed : 1;
-    unsigned int : 0;
-    u32 capabilities;
+struct task_security_struct {
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
     struct label_struct label; //each task has a secrecy or integrity label
-	struct list_head capList; // list of task's capabilities
-	struct list_head suspendedCaps;//can be used for fork/clone to temporarly drop caps
-	spinlock_t cap_lock; // lock capabilities.
-	int tcb;  //special integrity tag, part of TCB
 
-#endif    
+	int type;  //special tag: fthread=1 ethread=2 not_labeld=3
+
+	struct list_head slabel;
+	struct list_head ilabel;
+	struct list_head olabel;
+
+
+
+#endif  
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+    pid_t pid;         
+    uid_t uid;
+	struct tag* seclabel; /* Secrecy label  */
+	struct tag* poscaps; /* + capabilities */
+	struct tag* negcaps; /* - capabilities */
+	struct mutex lock;
+#endif //CONFIG_EXTENDED_FLOATING_DIFC//
+
+
+
 };
 
 

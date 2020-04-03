@@ -27,6 +27,10 @@
 
 #include <asm/tlb.h>
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv_mm.h>
+#endif
+
 #include "internal.h"
 
 /*
@@ -507,7 +511,36 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 static long madvise_dontneed_single_vma(struct vm_area_struct *vma,
 					unsigned long start, unsigned long end)
 {
+		#ifdef CONFIG_SW_UDOM
+
+	struct zap_details zap;
+	struct mm_struct *mm = current->mm;
+
+
+
+	if ( mm->using_smv ) {	
+		memset(&zap, 0, sizeof(struct zap_details));
+		zap.smv_id = -1;
+		/* Call zap_page_range for all smvs */
+		do {
+			zap.smv_id = find_next_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE, (zap.smv_id+1));
+			if (zap.smv_id != SMV_ARRAY_SIZE) {
+				slog(KERN_INFO "[%s] smv %d [0x%16lx to 0x%16lx]\n", __func__, zap.smv_id, start, end);
+				zap_page_range(vma, start, end - start, &zap);
+			}
+		} while (zap.smv_id != SMV_ARRAY_SIZE);
+	} else {
+			zap_page_range(vma, start, end - start,NULL);
+
+	}
+
+	#else
+
 	zap_page_range(vma, start, end - start);
+
+	#endif
+	
+	
 	return 0;
 }
 

@@ -99,6 +99,12 @@
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
 
+
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv.h>
+#endif
+
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
 
@@ -588,6 +594,16 @@ asmlinkage __visible void __init start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
+
+	#ifdef CONFIG_SW_UDOM
+
+	    /* Initialize smvs and memory domains for the secure memory views model */
+    init_task.smv_id = -1;
+	smv_init();
+    memdom_init();
+
+	#endif
+
 
 	ftrace_init();
 

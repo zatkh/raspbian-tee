@@ -78,6 +78,12 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv.h>
+#include <linux/memdom.h>
+#include <linux/smv_mm.h>
+#endif
+
 #include "internal.h"
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
@@ -603,7 +609,27 @@ void free_pgd_range(struct mmu_gather *tlb,
 	 * (see pte_free_tlb()), flush the tlb if we need
 	 */
 	tlb_remove_check_page_size_change(tlb, PAGE_SIZE);
+
+	#ifdef CONFIG_SW_UDOM
+
+	if (tlb->mm->using_smv) {
+		mutex_lock(&tlb->mm->smv_metadataMutex);
+		pgd = tlb->mm->pgd_smv[tlb->smv_id] + pgd_index(addr);
+		mutex_unlock(&tlb->mm->smv_metadataMutex);
+	} else{
+		pgd = pgd_offset(tlb->mm, addr);
+	}
+
+	#else
+
+	/*
+	 * We add page table cache pages with PAGE_SIZE,
+	 * (see pte_free_tlb()), flush the tlb if we need
+	 */
 	pgd = pgd_offset(tlb->mm, addr);
+
+	#endif
+
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
@@ -1503,7 +1529,22 @@ void unmap_page_range(struct mmu_gather *tlb,
 
 	BUG_ON(addr >= end);
 	tlb_start_vma(tlb, vma);
+
+
+	#ifdef CONFIG_SW_UDOM
+	if ( tlb->mm->using_smv ) {		
+		mutex_lock(&tlb->mm->smv_metadataMutex);
+		pgd = tlb->mm->pgd_smv[tlb->smv_id] + pgd_index(addr);
+		mutex_unlock(&tlb->mm->smv_metadataMutex);
+	} else{
+		pgd = pgd_offset(vma->vm_mm, addr);
+	}
+	#else
+
+
 	pgd = pgd_offset(vma->vm_mm, addr);
+	#endif //CONFIG_SW_UDOM
+
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
@@ -1595,8 +1636,15 @@ void unmap_vmas(struct mmu_gather *tlb,
  *
  * Caller must protect the VMA list
  */
+
+#ifndef CONFIG_SW_UDOM
 void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 		unsigned long size)
+#else
+void zap_page_range(struct vm_area_struct *vma, unsigned long start,
+		unsigned long size,struct zap_details *details)
+#endif	
+
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct mmu_gather tlb;
@@ -1604,13 +1652,18 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm, start, end);
+	/* Update smv_id in tlb if the caller is madvise_dontneed() */
+	if (details) {
+		tlb.smv_id = details->smv_id;
+	}
 	update_hiwater_rss(mm);
 	mmu_notifier_invalidate_range_start(mm, start, end);
 	for ( ; vma && vma->vm_start < end; vma = vma->vm_next)
-		unmap_single_vma(&tlb, vma, start, end, NULL);
+		unmap_single_vma(&tlb, vma, start, end, details);
 	mmu_notifier_invalidate_range_end(mm, start, end);
 	tlb_finish_mmu(&tlb, start, end);
 }
+
 
 /**
  * zap_page_range_single - remove user pages in a given range
@@ -4096,19 +4149,38 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 	pgd_t *pgd;
 	p4d_t *p4d;
 	vm_fault_t ret;
+	vm_fault_t rv;
 
-	pgd = pgd_offset(mm, address);
+
+	#ifdef CONFIG_SW_UDOM
+		if (mm->using_smv && current->smv_id >= MAIN_THREAD) {
+			pgd = pgd_offset_smv(mm, address, MAIN_THREAD);
+		} else {
+			pgd = pgd_offset(mm, address);
+		}
+
+	#else
+		pgd = pgd_offset(mm, address);
+
+	#endif
+
 	p4d = p4d_alloc(mm, pgd, address);
 	if (!p4d)
-		return VM_FAULT_OOM;
+		{rv= VM_FAULT_OOM;
+		goto out;
+		}
 
 	vmf.pud = pud_alloc(mm, p4d, address);
-	if (!vmf.pud)
-		return VM_FAULT_OOM;
+		if (!vmf.pud)
+		{rv= VM_FAULT_OOM;
+		goto out;
+		}
 	if (pud_none(*vmf.pud) && transparent_hugepage_enabled(vma)) {
 		ret = create_huge_pud(&vmf);
-		if (!(ret & VM_FAULT_FALLBACK))
-			return ret;
+		if (!(ret & VM_FAULT_FALLBACK)){
+			rv=ret;
+			goto out;
+		}
 	} else {
 		pud_t orig_pud = *vmf.pud;
 
@@ -4119,22 +4191,35 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 
 			if (dirty && !pud_write(orig_pud)) {
 				ret = wp_huge_pud(&vmf, orig_pud);
-				if (!(ret & VM_FAULT_FALLBACK))
-					return ret;
+					if (!(ret & VM_FAULT_FALLBACK))
+				{
+					rv=ret;
+					goto out;
+				}
 			} else {
 				huge_pud_set_accessed(&vmf, orig_pud);
-				return 0;
+					{
+					rv=0;
+					goto out;
+				}	
 			}
 		}
 	}
 
 	vmf.pmd = pmd_alloc(mm, vmf.pud, address);
 	if (!vmf.pmd)
-		return VM_FAULT_OOM;
+		{
+			rv=VM_FAULT_OOM;
+			goto out;
+		}
+		
 	if (pmd_none(*vmf.pmd) && transparent_hugepage_enabled(vma)) {
 		ret = create_huge_pmd(&vmf);
-		if (!(ret & VM_FAULT_FALLBACK))
-			return ret;
+			if (!(ret & VM_FAULT_FALLBACK))
+			{
+				rv=ret;
+				goto out;
+			}
 	} else {
 		pmd_t orig_pmd = *vmf.pmd;
 
@@ -4144,24 +4229,63 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 					  !is_pmd_migration_entry(orig_pmd));
 			if (is_pmd_migration_entry(orig_pmd))
 				pmd_migration_entry_wait(mm, vmf.pmd);
-			return 0;
+			{
+				rv = 0;
+				goto out;
+			}
 		}
 		if (pmd_trans_huge(orig_pmd) || pmd_devmap(orig_pmd)) {
 			if (pmd_protnone(orig_pmd) && vma_is_accessible(vma))
-				return do_huge_pmd_numa_page(&vmf, orig_pmd);
+				{rv= do_huge_pmd_numa_page(&vmf, orig_pmd);
+				goto out;
+				}
 
 			if (dirty && !pmd_write(orig_pmd)) {
 				ret = wp_huge_pmd(&vmf, orig_pmd);
 				if (!(ret & VM_FAULT_FALLBACK))
-					return ret;
+				{
+					rv = ret;
+					goto out;
+				}
 			} else {
 				huge_pmd_set_accessed(&vmf, orig_pmd);
-				return 0;
+				rv = 0;
+				goto out;
 			}
 		}
 	}
 
-	return handle_pte_fault(&vmf);
+	rv=handle_pte_fault(&vmf);
+
+
+	out:
+	/* Ribbon threads should copy the pgtables from the main thread
+	 * Pthreads (smv_id == -1) should still use pgd_offset 
+	 */
+	if (mm->using_smv && current->smv_id >= MAIN_THREAD) {
+		/* Only copy page table to current smv if handle_pte_fault succeeds. 
+		 * MAIN_THREAD will return immediately as it doesn't have to copy its own pgtables. */
+		if (rv == 0) {
+			/* FIXME: just pass pte to copy_pgtable_smv? */
+			copy_pgtable_smv(current->smv_id, MAIN_THREAD, address, flags, vma);
+		}
+		if (rv == 0) {
+			slog(KERN_INFO "[%s] addr 0x%16lx done\n", __func__, address);
+		} else{
+			slog(KERN_INFO "[%s] addr 0x%16lx failed\n", __func__, address);
+		}
+		if ( current->smv_id == MAIN_THREAD) {
+			slog(KERN_INFO "[%s] smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
+					__func__, current->smv_id, pgd_val(*pgd), pud_val(*pud), pmd_val(*pmd), pte_val(*pte));
+		}
+		slog(KERN_INFO "[%s] cr3: 0x%16lx, smv %d: mm->pgd: %p, mm->pgd_smv[%d]: %p, mm->pgd_smv[MAIN_THREAD]: %p\n", 
+				__func__, read_cr3(), current->smv_id, mm->pgd, current->smv_id, 
+				mm->pgd_smv[current->smv_id], mm->pgd_smv[MAIN_THREAD]);
+
+	}
+
+	return rv;
+	
 }
 
 /*

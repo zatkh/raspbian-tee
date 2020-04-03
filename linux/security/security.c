@@ -1034,41 +1034,12 @@ void security_cred_free(struct cred *cred)
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-
-
-int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+/*int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
 {
 
 	return call_int_hook_no_check(set_task_label,tsk, label,  op_type, label_type, bulk_label);
 }
-
-
-int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk)
-{
-	struct security_hook_list *hp;
-	int rc;
-
-	hlist_for_each_entry(hp, &security_hook_heads.check_tasks_labels_allowed, list) {
-		rc = hp->hook.check_tasks_labels_allowed(s_tsk,d_tsk);
-		if (rc != -EOPNOTSUPP)
-			return rc;
-	}
-	return -EOPNOTSUPP;
-}
-
-
-int security_check_task_labeled (struct task_struct *tsk)
-{
-	struct security_hook_list *hp;
-	int rc;
-
-	hlist_for_each_entry(hp, &security_hook_heads.check_task_labeled, list) {
-		rc = hp->hook.check_task_labeled(tsk);
-		if (rc != -EOPNOTSUPP)
-			return rc;
-	}
-	return -EOPNOTSUPP;
-}
+*/
 
 
 void *security_copy_user_label(const char __user *label)
@@ -1089,87 +1060,51 @@ void *security_copy_user_label(const char __user *label)
 	
 }
 
-//EXPORT_SYMBOL(security_inode_init_security);
-/* asmlinkage long sys_set_task_label(label_t label, int op_type, int label_type, void *bulk_label)
-{
-	printk(KERN_INFO "[sys_set_task_label]: enter %d, lable:%lld\n",op_type,label);
-	return call_int_hook_no_check(set_task_label, current,label,  op_type,  label_type, bulk_label);
-
-}
-*/
-
-/* 
-
-asmlinkage int sys_task_alloc_security(struct task_struct * p)
-{
-	printk(KERN_INFO "[sys_task_alloc_security]: enter \n");
-
-	return call_int_hook(task_alloc_security,0, current);
-
-}
-
-
-
-
-int security_inode_set_label(struct inode *inode, void __user *label)
+int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk)
 {
 	struct security_hook_list *hp;
 	int rc;
 
-	if (unlikely(IS_PRIVATE(inode)))
-		return -EOPNOTSUPP;
+	hlist_for_each_entry(hp, &security_hook_heads.check_tasks_labels_allowed, list) {
+		rc = hp->hook.check_tasks_labels_allowed(s_tsk,d_tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
 
-	hlist_for_each_entry(hp, &security_hook_heads.inode_set_label, list) {
-		rc = hp->hook.inode_set_label(inode, label);
+
+
+int security_check_task_labeled (struct task_struct *tsk)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.check_task_labeled, list) {
+		rc = hp->hook.check_task_labeled(tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
+
+unsigned long security_set_task_label (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
+{
+	struct security_hook_list *hp;
+	unsigned long rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.set_task_label, list) {
+		rc = hp->hook.set_task_label(tsk,label,ops,label_type,bulk_label);
 		if (rc != -EOPNOTSUPP)
 			return rc;
 	}
 	return -EOPNOTSUPP;
 
-}
-
-
-int security_inode_label_init_security (struct inode *inode,
-						struct inode *dir,
-						char **name,
-						void **value,
-						size_t *len,
-						void *label)
-{
-	if (unlikely(IS_PRIVATE(inode)))
-		return 0;
-	return call_int_hook(inode_label_init_security,0,inode, dir, name, value, len, label);
-}
-
-void security_test_cred_free(struct cred *cred)
-{
-	
-	if (unlikely(cred->security == NULL))
-		return;
-
-	call_void_hook(test_cred_free, cred);
-}
-
-
-
-int security_inode_get_security(const struct inode *inode, const char *name, void *buffer, size_t size, int err)
-{
-	struct security_hook_list *hp;
-	int rc;
-
-	if (unlikely(IS_PRIVATE(inode)))
-		return -EOPNOTSUPP;
-
-	hlist_for_each_entry(hp, &security_hook_heads.inode_get_security, list) {
-		rc = hp->hook.inode_get_security(inode, name, buffer, size, err);
-		if (rc != -EOPNOTSUPP)
-			return rc;
-	}
-	return -EOPNOTSUPP;
 
 }
 
-int security_inode_set_security(struct inode *inode, const char *name, const char __user *value, size_t size, int flags)
+
+int security_inode_set_security(struct inode *inode, const char *name, void *value, size_t size, int flags)
 {
 	struct security_hook_list *hp;
 	int rc;
@@ -1185,10 +1120,8 @@ int security_inode_set_security(struct inode *inode, const char *name, const cha
 	}
 	return -EOPNOTSUPP;
 
+return 0;
 }
- 
-*/
-
 
 #endif /* CONFIG_EXTENDED_LSM_DIFC */
 

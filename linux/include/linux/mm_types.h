@@ -17,6 +17,15 @@
 
 #include <asm/mmu.h>
 
+#ifdef CONFIG_SW_UDOM
+
+#include <linux/smv_mm.h>
+#include <linux/smv.h>
+#include <linux/memdom.h>
+
+#endif //CONFIG_SW_UDOM// 
+
+
 #ifndef AT_VECTOR_SIZE_ARCH
 #define AT_VECTOR_SIZE_ARCH 0
 #endif
@@ -323,6 +332,9 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+	#ifdef CONFIG_SW_UDOM
+	int memdom_id; /* Record which memdom does this vma belong to */
+	#endif
 } __randomize_layout;
 
 struct core_thread {
@@ -493,6 +505,22 @@ struct mm_struct {
 #endif
 	} __randomize_layout;
 
+#ifdef CONFIG_SW_UDOM
+
+/* Additional fields to support the secure memory view model */
+    atomic_t num_smvs;	/* number of smvs the current process has */
+	atomic_t num_memdoms;	/* number of memdoms the current process has */
+	DECLARE_BITMAP(memdom_bitmapInUse, SMV_ARRAY_SIZE); /* Bitmap of memdoms in use.  set to 1 if memdom[i] is in use, 0 otherwise. */
+    DECLARE_BITMAP(smv_bitmapInUse, SMV_ARRAY_SIZE); /* Bitmap of smvs in use.  set to 1 if smv[i] is in use, 0 otherwise. */
+	struct memdom_struct *memdom_metadata[SMV_ARRAY_SIZE];	/* Bookkeeping of per-process memory domains info */
+	struct smv_struct *smv_metadata[SMV_ARRAY_SIZE];	/* Bookkeeping of per-process smvs info */
+	struct mutex smv_metadataMutex;	/* mutex protecting memdom/smv_metadata and memdom/smv_bitmap */
+	int using_smv;	/* set to 1 if current mm is using the secure memory view model */
+	int standby_smv_id; /* For smv_thread_create to tell the kernel what smv an about-to-run thread will be running in */
+	pgd_t *pgd_smv[SMV_ARRAY_SIZE];   /* Page table used by smv threads.  Index at MAX_RIBBON-th pgd is for main thread */
+	spinlock_t page_table_lock_smv[SMV_ARRAY_SIZE];		/* Protects page tables and some counters for smvs. Index at MAX_RIBBON-th pgd is for main thread  */
+
+#endif
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
 	 * is dynamically sized based on nr_cpu_ids.

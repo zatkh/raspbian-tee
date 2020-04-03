@@ -591,6 +591,15 @@ struct wake_q_node {
 };
 
 struct task_struct {
+
+
+#ifdef CONFIG_SW_UDOM
+
+	int smv_id;  /* current task running in this smv */
+    int mmap_memdom_id; /* recording what memdom this task is trying to allocate memory in. Used by memdom_alloc() */
+
+#endif // CONFIG_SW_UDOM//
+
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * For reasons of header soup (see current_thread_info()), this

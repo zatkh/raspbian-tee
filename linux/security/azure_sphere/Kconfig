@@ -20,6 +20,27 @@ config EXTENDED_LSM_DIFC
 	help
 		This adds difc support to the extended Azure Sphere LSM.
 
+config EXTENDED_FLOATING_DIFC
+	bool "supports difc with floating labels LSM"
+	depends on EXTENDED_LSM_DIFC
+	default y
+	help
+		This adds floating difc support.
+
+config SECURITY_WEIR
+    bool "WEIR DIFC System"
+    depends on EXTENDED_LSM_DIFC
+    default y
+    help
+		This adds weir-similar difc support.
+
+config SW_UDOM
+	bool "supports sw based utiles"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds support for sw-based utiles.
+
 config AZURE_SPHERE_MMAP_EXEC_PROTECTION
 	bool "Azure Sphere mmap protection"
 	depends on SECURITY_AZURE_SPHERE

@@ -1781,19 +1781,16 @@ union security_list_options {
 
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-//	label_t  (*alloc_label) (struct task_struct *tsk, int type, int region);
-	int  (*set_task_label) (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label);
-		void*  (*copy_user_label) (const char __user *label);
+	unsigned long  (*set_task_label) (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label);
+	void*  (*copy_user_label) (const char __user *label);
 	int  (*check_tasks_labels_allowed) (struct task_struct *s_tsk,struct task_struct *d_tsk);
 	int (*check_task_labeled) (struct task_struct *tsk);
-/*
-	int (*inode_label_init_security) (struct inode *inode, struct inode *dir,
-				    char **name, void **value, size_t *len, void *label);
-  	int (*inode_get_security)(const struct inode *inode, const char *name, void *buffer, size_t size, int err);
-	int (*inode_set_security)(struct inode *inode, const char *name, const char __user *value, size_t size, int flags);
-	int (*inode_set_label) (struct inode *inode, void __user *label);
+	int (*sk_alloc_security)(struct sock *sk, int family, gfp_t priority);
+	void (*sk_free_security)(struct sock *sk);
+	void (*sk_clone_security)(const struct sock *sk, struct sock *newsk);
+	int (*inode_set_security)(struct inode *inode, const char *name,  void *label, size_t size, int flags);
 
-*/
+
 #endif
 
 };
@@ -2033,18 +2030,15 @@ struct security_hook_heads {
 
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-	//struct hlist_head test_cred_free;
-	struct hlist_head set_task_label;	
+
+	struct hlist_head set_task_label;
 	struct hlist_head copy_user_label;
 	struct hlist_head check_tasks_labels_allowed;
 	struct hlist_head check_task_labeled;
-	/*
-	struct hlist_head inode_get_security;
+	struct hlist_head sk_alloc_security;
+	struct hlist_head sk_free_security;
+	struct hlist_head sk_clone_security;
 	struct hlist_head inode_set_security;
-	struct hlist_head inode_set_label;
-		struct hlist_head inode_label_init_security;
-*/
-
 	
 #endif
 

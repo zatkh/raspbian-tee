@@ -197,16 +197,6 @@ struct azure_sphere_enable_peripheral_driver {
     bool enable;
 };
 
-struct azure_sphere_security_set_process_details {
-    // Process component ID
-    uint8_t component_id[16];
-    // Is job control allowed from this process?
-    bool job_control_allowed;
-    // Process DAA tenant id
-    char daa_tenant_id[64];
-    // Capabilities for this process
-    azure_sphere_capability_t capabilities;
-};
 
 typedef enum {
     AZURE_SPHERE_IO_CORE_CONTROL_RUN = 0,

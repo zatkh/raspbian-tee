@@ -19,7 +19,6 @@
  *
  */
 
-
 #include <linux/device.h>
 #include <linux/lsm_hooks.h>
 #include <linux/init.h>
@@ -121,10 +120,9 @@ unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
 
 
-
 #ifdef CONFIG_EXTENDED_LSM
 
-
+/*
 struct syscall_argdesc (*seccomp_syscalls_argdesc)[] = NULL;
 
 
@@ -174,10 +172,8 @@ void __init seccomp_init(void)
 	init_argdesc();
 }
 
-
+*/
 #endif /* CONFIG_EXTENDED_LSM */
-
-
 
 
 
@@ -2064,7 +2060,7 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
-	struct task_security_struct *tsec;//=azs_cred(cred);
+	struct task_security_struct *tsec=azs_cred(cred);
 
 	struct cap_segment *cap_seg;
 	struct cap_segment *sus_seg;
@@ -2115,7 +2111,7 @@ mutex_init(&tsec->lock);
 
 static void difc_cred_free(struct cred *cred) {
 
-	struct task_security_struct *tsp;//=azs_cred(cred);
+	struct task_security_struct *tsp=azs_cred(cred);
 //struct task_security_struct *tsp=current_security();
 //struct task_difc *tsp = cred->security;
 
@@ -2156,8 +2152,8 @@ static void difc_cred_free(struct cred *cred) {
 
 static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	const struct task_security_struct *old_tsec;//=azs_cred(old);
-	struct task_security_struct *tsec;//=azs_cred(new);
+	const struct task_security_struct *old_tsec=azs_cred(old);
+	struct task_security_struct *tsec=azs_cred(new);
 	struct tag* tag_seg;
 
 	int rc=0;
@@ -2259,8 +2255,8 @@ static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
 	difc_lsm_debug("in transfer for pid %d\n", current->pid);
 	if(new == NULL || old == NULL)
 	    return;
-	//old_tsec = azs_cred(old);
-	//tsec = azs_cred(new);
+	old_tsec = azs_cred(old);
+	tsec = azs_cred(new);
 
 	mutex_lock(&old_tsec->lock);
 	if(old_tsec==NULL || tsec==NULL)
@@ -2541,14 +2537,15 @@ asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long sm
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 
+struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
+	.lbs_cred = sizeof(struct task_security_struct),
 
-
-
+};
 
 
 static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
-   LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
+    LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_free, difc_cred_free),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
 	LSM_HOOK_INIT(cred_transfer, difc_sphere_cred_transfer),
@@ -2596,22 +2593,26 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 #endif
 
 
-
 };
 
 
 static int __init azure_sphere_lsm_init(void)
 {
 
-  azure_sphere_cred_init_security();
+
+    azure_sphere_cred_init_security();
 
     security_add_hooks(azure_sphere_hooks, ARRAY_SIZE(azure_sphere_hooks),"AzureSphere");
 
     return 0;
 }
 
+//security_initcall(azure_sphere_lsm_init);
 
 
-security_initcall(azure_sphere_lsm_init);
+DEFINE_LSM(AzureSphere) = {
+	.name = "AzureSphere",
+	.blobs = &azs_blob_sizes,
+	.init = azure_sphere_lsm_init,	
 
-
+};

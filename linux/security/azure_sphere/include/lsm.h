@@ -18,12 +18,26 @@
  * Place - Suite 330, Boston, MA 02111-1307 USA.
  *
  */
-#ifndef _AZURE_SPHERE_SECURITY_H
-#define _AZURE_SPHERE_SECURITY_H
+#ifndef _SECURITY_AZURE_SPHERE_H
+#define _SECURITY_AZURE_SPHERE_H
 #include <linux/types.h>
-#include <uapi/linux/azure-sphere/security_monitor.h>
-#include <uapi/linux/azure-sphere/security.h>
+#include <azure-sphere/security.h>
 
-struct task_struct;
+
+
+extern struct lsm_blob_sizes azs_blob_sizes;
+static inline struct task_security_struct *azs_cred(const struct cred *cred)
+{
+	return cred->security + azs_blob_sizes.lbs_cred;
+}
+
+#ifndef CONFIG_EXTENDED_LSM
+#include <linux/syscalls.h>	
+
+extern const struct syscall_argdesc __start_syscalls_argdesc[];
+extern const struct syscall_argdesc __stop_syscalls_argdesc[];
+
+
+#endif /* CONFIG_EXTENDED_LSM */
 
 #endif

@@ -407,16 +407,6 @@ sys_fstatfs64_wrapper:
 		b	sys_fstatfs64
 ENDPROC(sys_fstatfs64_wrapper)
 
-sys_difc_enter_domain_wrapper:
-        add	r2, sp, #S_OFF
-		b	sys_difc_enter_domain
-ENDPROC(sys_difc_enter_domain_wrapper)
-
-sys_difc_exit_domain_wrapper:
-        add	r0, sp, #S_OFF
-		b	sys_difc_exit_domain
-ENDPROC(sys_difc_exit_domain_wrapper)
-
 sys_udom_mmap:
 		str	r5, [sp, #4]
 		b	sys_udom_mmap_pgoff

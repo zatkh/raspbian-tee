@@ -51,7 +51,11 @@
 #include <asm/cacheflush.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
+
+#ifdef CONFIG_SW_UDOM
 #include <asm/udom.h>
+#include <linux/smv_mm.h>
+#endif
 
 
 #include "internal.h"
@@ -1139,6 +1143,24 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	VM_WARN_ON(area && end > area->vm_end);
 	VM_WARN_ON(addr >= end);
 
+
+#ifdef CONFIG_SW_UDOM
+
+	/*
+	 * Do not merge a memdom protected vma
+	 */
+	if ( vm_flags & VM_MEMDOM ||
+		(prev && (prev->vm_flags & VM_MEMDOM)) ||
+		(next && (next->vm_flags & VM_MEMDOM))) {
+		printk(KERN_INFO "[%s] smv %d skip merging VM_MEMDOM vma\n", __func__, current->smv_id);
+    	printk(KERN_INFO "[%s] smv %d prev->vm_start: 0x%16lx to prev->vm_end: 0x%16lx, prev->memdom_id: %d\n",
+	        			 __func__, current->smv_id, prev->vm_start, prev->vm_end, prev->memdom_id);	
+    	printk(KERN_INFO "[%s] smv %d next->vm_start: 0x%16lx to next->vm_end: 0x%16lx, next->memdom_id: %d\n",
+	        			 __func__, current->smv_id, next->vm_start, next->vm_end, next->memdom_id);	
+		return NULL;
+	}
+#endif
+
 	/*
 	 * Can it merge with the predecessor?
 	 */
@@ -1534,6 +1556,19 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		if (file && is_file_hugepages(file))
 			vm_flags |= VM_NORESERVE;
 	}
+
+	#ifdef CONFIG_SW_UDOM
+
+	/*
+	 * Set MEMDOM flag if the vma is protected by a memory domain 
+	 */
+	if (mm->using_smv) {
+		if (flags & MAP_MEMDOM) {
+			vm_flags |= VM_MEMDOM;
+		}
+	}
+#endif
+
 
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
@@ -2045,6 +2080,21 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
+
+
+#ifdef CONFIG_SW_UDOM
+
+	/* mmap_region: Set memdom_id correctly. 
+	 * User space call memdom_mmap_register to store memdom_id for mmap in current */
+	if ( vm_flags & VM_MEMDOM ) {
+		vma->memdom_id = current->mmap_memdom_id;	
+		current->mmap_memdom_id = -1; // reset to -1
+		printk(KERN_INFO "[%s] smv %d allocated vma in memdom %d [0x%16lx - 0x%16lx)\n", 
+			   __func__, current->smv_id, vma->memdom_id, vma->vm_start, vma->vm_end);
+	} else {
+		vma->memdom_id = MAIN_THREAD; 
+	}
+#endif
 
 	if (file) {
 		if (vm_flags & VM_DENYWRITE) {
@@ -2876,10 +2926,51 @@ static void unmap_region(struct mm_struct *mm,
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm, start, end);
 	update_hiwater_rss(mm);
+
+
+
+#ifdef CONFIG_SW_UDOM
+
+
+	/* Get rid of page table information for all smvs */
+	if (mm->using_smv) {
+		int smv_id = -1;
+		do {
+			smv_id = find_next_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE, (smv_id + 1) );		
+			if (smv_id != SMV_ARRAY_SIZE) {
+				slog(KERN_INFO "[%s] smv %d [0x%16lx to 0x%16lx]\n", __func__, smv_id, 
+						prev ? prev->vm_end : FIRST_USER_ADDRESS,
+						next ? next->vm_start : USER_PGTABLES_CEILING );
+				tlb.smv_id = smv_id;
+				unmap_vmas(&tlb, vma, start, end);
+				/* Only the main thread should touch vma in free_pgtables */
+				if (smv_id == MAIN_THREAD) {
+					free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
+								 next ? next->vm_start : USER_PGTABLES_CEILING);
+				}
+				/* Other smv threads just free its own page tables */ 
+				else {
+					smv_free_pgtables(&tlb, vma, 
+										 prev ? prev->vm_end : FIRST_USER_ADDRESS, 
+										 next ? next->vm_start : USER_PGTABLES_CEILING);       
+				}
+			}
+		} while (smv_id != SMV_ARRAY_SIZE);
+	} 
+	else {
+		unmap_vmas(&tlb, vma, start, end);
+		free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
+					 next ? next->vm_start : USER_PGTABLES_CEILING);
+	}
+
+#else
+
 	unmap_vmas(&tlb, vma, start, end);
 	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
 				 next ? next->vm_start : USER_PGTABLES_CEILING);
 	tlb_finish_mmu(&tlb, start, end);
+#endif	
+
 }
 
 /*
@@ -2959,6 +3050,12 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 			((addr - new->vm_start) >> PAGE_SHIFT), new);
 	else
 		err = vma_adjust(vma, vma->vm_start, addr, vma->vm_pgoff, new);
+
+
+	#ifdef CONFIG_SW_UDOM
+
+	new->memdom_id = MAIN_THREAD; // make new vma the main thread's
+	#endif
 
 	/* Success. */
 	if (!err)
@@ -3081,6 +3178,13 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 			tmp = tmp->vm_next;
 		}
 	}
+
+	#ifdef CONFIG_SW_UDOM
+
+	if (vma->memdom_id != MAIN_THREAD) {
+		printk(KERN_INFO "[%s] smv %d removing vma in memdom %d\n", __func__, current->smv_id, vma->memdom_id);
+	}	
+	#endif
 
 	/*
 	 * Remove the vma's, and unmap the actual pages
@@ -3300,6 +3404,9 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	vma->vm_pgoff = pgoff;
 	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
+	#ifdef CONFIG_SW_UDOM
+	vma->memdom_id = MAIN_THREAD; // make new vma the main thread's
+	#endif
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 out:
 	perf_event_mmap(vma);
@@ -3396,6 +3503,20 @@ void exit_mmap(struct mm_struct *mm)
 	lru_add_drain();
 	flush_cache_mm(mm);
 	tlb_gather_mmu(&tlb, mm, 0, -1);
+
+
+	#ifdef CONFIG_SW_UDOM
+
+	if (mm->using_smv) {
+		free_all_smvs(mm);   /* Free smvs and their mm */
+		free_all_memdoms(mm);   /* Free memdoms */
+		tlb.smv_id = MAIN_THREAD;	/* Set smv id in tlb for unmap_vmas and free_pgtables to use */
+	}
+
+	#endif
+
+
+
 	/* update_hiwater_rss(mm) here? but nobody should be looking */
 	/* Use -1 here to ensure all VMAs in the mm are unmapped */
 	unmap_vmas(&tlb, vma, 0, -1);
@@ -3519,6 +3640,9 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			new_vma->vm_ops->open(new_vma);
 		vma_link(mm, new_vma, prev, rb_link, rb_parent);
 		*need_rmap_locks = false;
+		#ifdef CONFIG_SW_UDOM
+			vma->memdom_id = vma->memdom_id; // copy memdom_id
+		#endif
 	}
 	return new_vma;
 
@@ -3661,6 +3785,9 @@ static struct vm_area_struct *__install_special_mapping(
 
 	vma->vm_ops = ops;
 	vma->vm_private_data = priv;
+	#ifdef CONFIG_SW_UDOM
+		vma->memdom_id = MAIN_THREAD; // make new vma the main thread's
+	#endif
 
 	ret = insert_vm_struct(mm, vma);
 	if (ret)

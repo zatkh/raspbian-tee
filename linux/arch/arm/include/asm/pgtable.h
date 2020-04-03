@@ -179,7 +179,19 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 /* to find an entry in a page-table-directory */
 #define pgd_index(addr)		((addr) >> PGDIR_SHIFT)
 
+//#define pgd_offset(mm, addr)	((mm)->pgd + pgd_index(addr))
+
+
+#ifdef CONFIG_SW_UDOM
+#define pgd_offset(mm, address) \
+	( ((mm)->using_smv && (current)->smv_id != -1) ? \
+	  ((mm)->pgd_smv[(current)->smv_id] + pgd_index((address))) : ((mm)->pgd  + pgd_index((address))) )
+
+#else
+
 #define pgd_offset(mm, addr)	((mm)->pgd + pgd_index(addr))
+
+#endif
 
 /* to find an entry in a kernel page-table-directory */
 #define pgd_offset_k(addr)	pgd_offset(&init_mm, addr)
