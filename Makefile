@@ -23,7 +23,7 @@ ARM_TF_FLAGS ?= \
 
 .PHONY: arm-tf
 arm-tf: optee-os u-boot-env
-	CROSS_COMPILE=${CROSS_COMPILE_AARCH64} $(MAKE) -C ${TEE_SDK_DIR}/arm-trusted-firmware $(ARM_TF_FLAGS) all fip
+	CROSS_COMPILE=${CROSS_COMPILE_AARCH64} $(MAKE) -j8 -C ${TEE_SDK_DIR}/arm-trusted-firmware $(ARM_TF_FLAGS) all fip
 
 .PHONY: arm-tf-final
 arm-tf-final: arm-tf
@@ -31,7 +31,7 @@ arm-tf-final: arm-tf
 
 .PHONY: arm-tf-clean
 arm-tf-clean:
-	$(MAKE) -C $(ARM_TF_PATH) $(ARM_TF_FLAGS) clean
+	$(MAKE) -j8 -C $(ARM_TF_PATH) $(ARM_TF_FLAGS) clean
 
 ################################################################################
 # Das U-Boot
@@ -41,12 +41,12 @@ U-BOOT_DEFCONFIG_COMMON_FILES := \
 		${TEE_SDK_DIR}/firmware/u-boot_rpi3.conf
 .PHONY: u-boot
 u-boot: u-boot-defconfig
-	ARCH=arm $(MAKE) -C ./u-boot all
-	ARCH=arm $(MAKE) -C ./u-boot tools
+	ARCH=arm $(MAKE) -j8 -C ./u-boot all
+	ARCH=arm $(MAKE) -j8 -C ./u-boot tools
 
 .PHONY: u-boot-clean
 u-boot-clean: u-boot-defconfig-clean
-	ARCH=arm $(MAKE) -C ./u-boot clean
+	ARCH=arm $(MAKE) -j8 -C ./u-boot clean
 
 .PHONY: u-boot-env
 u-boot-env: ${TEE_SDK_DIR}/firmware/uboot.env.txt u-boot
@@ -81,13 +81,13 @@ OPTEE_OS_FLAGS ?= \
 
 .PHONY: optee-os
 optee-os:
-	$(MAKE) -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_FLAGS)
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_FLAGS)
 
 OPTEE_OS_CLEAN_FLAGS ?= O=out/arm CFG_ARM32_core=y
 
 .PHONY: optee-os-clean
 optee-os-clean:
-	$(MAKE) -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_CLEAN_FLAGS) clean
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_CLEAN_FLAGS) clean
 
 ################################################################################
 # OP-TEE client
@@ -97,7 +97,7 @@ OPTEE_CLIENT_FLAGS ?= CROSS_COMPILE=$(CROSS_COMPILE) \
 
 .PHONY: optee-client
 optee-client:
-	$(MAKE) -C ${TEE_SDK_DIR}/optee_client $(OPTEE_CLIENT_FLAGS)
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_client $(OPTEE_CLIENT_FLAGS)
 
 .PHONY: optee-client-final
 optee-client-final: optee-client
@@ -106,7 +106,7 @@ optee-client-final: optee-client
 
 .PHONY: optee-client-clean
 optee-client-clean:
-	$(MAKE) -C ${TEE_SDK_DIR}/optee_client $(OPTEE_CLIENT_CLEAN_FLAGS) \
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_client $(OPTEE_CLIENT_CLEAN_FLAGS) \
 clean
 
 
@@ -121,7 +121,7 @@ install:
 ################################################################################
 .PHONY: optee-examples
 optee-examples:
-	$(MAKE) -C ${TEE_SDK_DIR}/optee_examples \
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_examples \
 HOST_CROSS_COMPILE=${CROSS_COMPILE} \
 TEEC_EXPORT=${TEE_SDK_DIR}/optee_client/out/export \
 TA_DEV_KIT_DIR=${TEE_SDK_DIR}/optee_os/out/arm/export-ta_arm32
@@ -146,11 +146,11 @@ optee-examples-final: optee-examples
 ################################################################################
 .PHONY: linux-config
 linux-config:
-	ARCH=arm $(MAKE) -C ${TEE_SDK_DIR}/linux bcm2709_defconfig
+	ARCH=arm $(MAKE) -j8 -C ${TEE_SDK_DIR}/linux bcm2709_defconfig
 
 .PHONY: linux-build
 linux-build: linux-config
-	ARCH=arm $(MAKE) -C ${TEE_SDK_DIR}/linux zImage dtbs modules
+	ARCH=arm $(MAKE) -j8 -C ${TEE_SDK_DIR}/linux zImage dtbs modules
 
 .PHONY: linux-uimage
 linux-uimage: linux-build
@@ -158,7 +158,7 @@ linux-uimage: linux-build
 
 .PHONY: linux-final
 linux-final: linux-uimage
-	ARCH=arm $(MAKE) -C ${TEE_SDK_DIR}/linux modules_install INSTALL_MOD_PATH=${TEE_SDK_DIR}/out/rootfs/
+	ARCH=arm $(MAKE) -j8 -C ${TEE_SDK_DIR}/linux modules_install INSTALL_MOD_PATH=${TEE_SDK_DIR}/out/rootfs/
 	cp ${TEE_SDK_DIR}/linux/arch/arm/boot/uImage ./out/boot/
 	cp ${TEE_SDK_DIR}/linux/arch/arm/boot/dts/bcm2710-rpi-3-b-plus.dtb ./out/boot/
 	cp ${TEE_SDK_DIR}/linux/arch/arm/boot/dts/bcm2710-rpi-3-b.dtb ./out/boot/

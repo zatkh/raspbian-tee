@@ -2070,7 +2070,7 @@ static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 	struct cap_segment *sus_seg;
 	struct tag* tag_seg;
 
-	difc_lsm_debug(" difc_cred_alloc_blank\n");
+	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
 
 	if (!tsec)
 		return -ENOMEM;
@@ -2105,7 +2105,7 @@ mutex_init(&tsec->lock);
 	tsec->negcaps=NULL;
 #endif
 
-//	cred->security = tsec;
+	cred->security = tsec;
 
 	return 0;
 
@@ -2115,9 +2115,8 @@ mutex_init(&tsec->lock);
 
 static void difc_cred_free(struct cred *cred) {
 
-	struct task_security_struct *tsp;//=azs_cred(cred);
-//struct task_security_struct *tsp=current_security();
-//struct task_difc *tsp = cred->security;
+	//struct task_security_struct *tsp;//=azs_cred(cred);
+struct task_security_struct *tsp=cred->security;
 
 
 
@@ -2156,23 +2155,21 @@ static void difc_cred_free(struct cred *cred) {
 
 static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	const struct task_security_struct *old_tsec;//=azs_cred(old);
+	const struct task_security_struct *old_tsec;
 	struct task_security_struct *tsec;//=azs_cred(new);
 	struct tag* tag_seg;
 
 	int rc=0;
 
+	difc_lsm_debug("log\n");
+	if(new == NULL || old == NULL)
+	    return;
+	old_tsec = old->security;
+	tsec = new->security;
 
-//	if(old==NULL || new==NULL)
-//	    return 0;
-
-//	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-//	tsec = new_task_security_struct(gfp);
 
 	if (!tsec)
 		return -ENOMEM;
-
-
 
 	
 	tsec->type = old_tsec->type;
@@ -2251,7 +2248,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 	return 0;
 }
 
-static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
+static void difc_cred_transfer(struct cred *new, const struct cred *old)
 {
 	struct task_security_struct *old_tsec;
 	struct task_security_struct *tsec;
@@ -2259,8 +2256,8 @@ static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
 	difc_lsm_debug("in transfer for pid %d\n", current->pid);
 	if(new == NULL || old == NULL)
 	    return;
-	//old_tsec = azs_cred(old);
-	//tsec = azs_cred(new);
+	old_tsec = old->security;
+	tsec = new->security;
 
 	mutex_lock(&old_tsec->lock);
 	if(old_tsec==NULL || tsec==NULL)
@@ -2551,7 +2548,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
    LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_free, difc_cred_free),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
-	LSM_HOOK_INIT(cred_transfer, difc_sphere_cred_transfer),
+	LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
