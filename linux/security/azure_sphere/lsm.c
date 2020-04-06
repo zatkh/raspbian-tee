@@ -2059,24 +2059,15 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 
-
-
-static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
+static struct task_security_struct *azs_new_task(struct task_security_struct *task,
+					struct task_security_struct *forked, gfp_t gfp)
 {
-
-	struct task_security_struct *tsec;//=azs_cred(cred);
-
-	struct cap_segment *cap_seg;
-	struct cap_segment *sus_seg;
+	struct task_security_struct *tsec;
 	struct tag* tag_seg;
 
+
 	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-
-	if (!tsec)
-		return -ENOMEM;
-
-
-	//spin_lock_init(&tsec->cap_lock);
+	if (tsec == NULL)
 
 	tsec->type=TAG_CONF;
 
@@ -2088,15 +2079,6 @@ static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 	INIT_LIST_HEAD(&tag_seg->next);
 
 
-
-	//spin_unlock(&tsec->cap_lock);
-
-  // cred->security = tsec;
-
-
-
-
-
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 mutex_init(&tsec->lock);
 	tsec->pid = current->pid;
@@ -2105,7 +2087,24 @@ mutex_init(&tsec->lock);
 	tsec->negcaps=NULL;
 #endif
 
+	return tsec;
+}
+
+
+
+static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
+{
+
+	struct task_security_struct *tsec;
+	difc_lsm_debug(" azure_sphere_cred_alloc_blank\n");
+
+	tsec = azs_new_task(NULL, NULL, gfp);
+	if (tsec == NULL)
+		return -ENOMEM;
+
+	
 	cred->security = tsec;
+	difc_lsm_debug(" end of azure_sphere_cred_alloc_blank\n");
 
 	return 0;
 
@@ -2115,39 +2114,44 @@ mutex_init(&tsec->lock);
 
 static void difc_cred_free(struct cred *cred) {
 
-	//struct task_security_struct *tsp;//=azs_cred(cred);
-struct task_security_struct *tsp=cred->security;
+	struct task_security_struct *tsec;
 
-
-
-	if (tsp == NULL)
+	if((cred->security)==NULL)
 		return;
-	cred->security = NULL;
 
+	else
+		{
+		tsec=cred->security;
+		cred->security = NULL;
+		}
 	
-		difc_free_label(&tsp->ilabel);
-		list_del(&tsp->ilabel);
-
-		difc_free_label(&tsp->slabel);
-		list_del(&tsp->slabel);
-
-		difc_free_label(&tsp->olabel);
-		list_del(&tsp->olabel);
-
 	
+/*	
+		difc_free_label(&tsec->ilabel);
+		list_del(&tsec->ilabel);
+
+		difc_free_label(&tsec->slabel);
+		list_del(&tsec->slabel);
+
+		difc_free_label(&tsec->olabel);
+		list_del(&tsec->olabel);
+
+	*/
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
-	    mutex_lock(&tsp->lock);
-	    if(tsp->seclabel!=NULL)  kfree(tsp->seclabel);
-	    if(tsp->poscaps!=NULL)	 kfree(tsp->poscaps);
-	    if(tsp->negcaps!=NULL)	 kfree(tsp->negcaps);
+	    mutex_lock(&tsec->lock);
+	    if(tsec->seclabel!=NULL)  kfree(tsec->seclabel);
+	    if(tsec->poscaps!=NULL)	 kfree(tsec->poscaps);
+	    if(tsec->negcaps!=NULL)	 kfree(tsec->negcaps);
 	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
-	    mutex_unlock(&tsp->lock);
+	    mutex_unlock(&tsec->lock);
 
 #endif
 
-	//kfree(table);
-	kfree(tsp);
+
+
+	kfree(table);
+	kfree(tsec);
 }
 
 
@@ -2156,21 +2160,24 @@ struct task_security_struct *tsp=cred->security;
 static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
 	const struct task_security_struct *old_tsec;
-	struct task_security_struct *tsec;//=azs_cred(new);
+	struct task_security_struct *tsec;
 	struct tag* tag_seg;
 
 	int rc=0;
 
-	difc_lsm_debug("log\n");
-	if(new == NULL || old == NULL)
-	    return;
-	old_tsec = old->security;
-	tsec = new->security;
-
-
-	if (!tsec)
+	if(old==NULL)
+		return 0;
+	else
+	{
+		old_tsec=old->security;
+	}
+		
+	tsec = azs_new_task(NULL, NULL, gfp);
+	if (tsec == NULL)
 		return -ENOMEM;
 
+
+/*
 	
 	tsec->type = old_tsec->type;
 
@@ -2180,7 +2187,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 
 	tag_seg=alloc_tag_struct();
 	INIT_LIST_HEAD(&tag_seg->next);	
-/*	rc = difc_copy_label(&old_tsec->slabel, &tsec->slabel);
+	rc = difc_copy_label(&old_tsec->slabel, &tsec->slabel);
 	if (rc != 0)
 		return rc;
 
@@ -2545,23 +2552,28 @@ asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long sm
 
 static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
-   LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
-	LSM_HOOK_INIT(cred_free, difc_cred_free),
+  LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
-	LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
+	//LSM_HOOK_INIT(cred_free, difc_cred_free),
+//LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
 
-#ifdef CONFIG_EXTENDED_LSM_DIFC
 
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
-//	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-//	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
 	LSM_HOOK_INIT(file_permission,difc_file_permission),
+	LSM_HOOK_INIT(sk_alloc_security, difc_sk_alloc_security),
+	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
+	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
+	
+
+//	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
+//	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+
 
 	/*
 	
@@ -2575,9 +2587,6 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
 	*/
 	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
-	LSM_HOOK_INIT(sk_alloc_security, difc_sk_alloc_security),
-	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
-	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
 
 	
 
@@ -2590,7 +2599,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
 
 */
-#endif
+
 
 
 
