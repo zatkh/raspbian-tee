@@ -1,10 +1,5 @@
 project (ustar-sandbox C)
 
-
-
-################################################################################
-# Source files
-################################################################################
 set (SRC
 	src/main.c
 	src/seccomp_demo.c
@@ -14,13 +9,7 @@ set (SRC
 	src/difc_fl.c
 	src/smv_lib.c
 	src/memdom_lib.c
-
-
-
-
 )
-
-
 
 ################################################################################
 # Built binary
@@ -34,7 +23,7 @@ target_compile_definitions (${PROJECT_NAME}
 	PRIVATE -DCFG_TEE_SUPP_LOG_LEVEL=${CFG_TEE_SUPP_LOG_LEVEL}
 	PRIVATE -DTEEC_LOAD_PATH="${CFG_TEE_CLIENT_LOAD_PATH}"
 	PRIVATE -DTEE_FS_PARENT_PATH="${CFG_TEE_FS_PARENT_PATH}"
-	PRIVATE -DBINARY_PREFIX="TSUP" 
+	PRIVATE -DBINARY_PREFIX="TSUP"
 )
 
 add_compile_options (
@@ -54,4 +43,4 @@ target_link_libraries (${PROJECT_NAME}
 ################################################################################
 # Install targets
 ################################################################################
-install (TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
+install (TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_SBINDIR})

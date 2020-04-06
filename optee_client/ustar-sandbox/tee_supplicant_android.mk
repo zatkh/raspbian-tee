@@ -1,4 +1,6 @@
-
+################################################################################
+# Build tee supplicant                                                         #
+################################################################################
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -17,25 +19,32 @@ ifeq ($(CFG_TA_TEST_PATH),y)
 LOCAL_CFLAGS += -DCFG_TA_TEST_PATH=1
 endif
 
-LOCAL_SRC_FILES += src/main.c 
-
-
-
-ifeq ($(CFG_TA_GPROF_SUPPORT),y)
-LOCAL_CFLAGS += -DCFG_TA_GPROF_SUPPORT
+ifeq ($(CFG_GP_SOCKETS),y)
+LOCAL_CFLAGS += -DCFG_GP_SOCKETS=1
 endif
 
-ifeq ($(CFG_TA_FTRACE_SUPPORT),y)
-LOCAL_CFLAGS += -DCFG_TA_FTRACE_SUPPORT
+LOCAL_SRC_FILES += src/handle.c \
+                   src/tee_supp_fs.c \
+                   src/tee_supplicant.c \
+                   src/teec_ta_load.c \
+                   src/rpmb.c
+
+ifeq ($(CFG_GP_SOCKETS),y)
+LOCAL_SRC_FILES += src/tee_socket.c
 endif
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/../public \
-                    $(LOCAL_PATH)/../libteec/include \
-                    $(LOCAL_PATH)/src
+    $(LOCAL_PATH)/../libteec/include \
+    $(LOCAL_PATH)/src
 
 LOCAL_SHARED_LIBRARIES := libteec
 
-LOCAL_MODULE := ustar-sandbox
+ifeq ($(CFG_TA_GPROF_SUPPORT),y)
+LOCAL_SRC_FILES += src/gprof.c
+LOCAL_CFLAGS += -DCFG_TA_GPROF_SUPPORT
+endif
+
+LOCAL_MODULE := tee-supplicant
 LOCAL_MODULE_TAGS := optional
 LOCAL_VENDOR_MODULE := true
 include $(BUILD_EXECUTABLE)

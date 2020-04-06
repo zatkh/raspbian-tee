@@ -63,8 +63,8 @@ static inline uint64_t read_ccounter(void)
 
 static TEEC_Result benchmark_pta_open(void)
 {
-	TEEC_Result res = TEEC_ERROR_GENERIC;
-	uint32_t ret_orig = 0;
+	TEEC_Result res;
+	uint32_t ret_orig;
 
 	res = TEEC_InitializeContext(NULL, &bench_ctx);
 	if (res != TEEC_SUCCESS)
@@ -90,11 +90,9 @@ static void benchmark_pta_close(void)
 static TEEC_Result benchmark_get_bench_buf_paddr(uint64_t *paddr_ts_buf,
 				uint64_t *size)
 {
-	TEEC_Result res = TEEC_ERROR_GENERIC;
-	uint32_t ret_orig = 0;
-	TEEC_Operation op;
-
-	memset(&op, 0, sizeof(op));
+	TEEC_Result res;
+	TEEC_Operation op = { 0 };
+	uint32_t ret_orig;
 
 	res = benchmark_pta_open();
 	if (res != TEEC_SUCCESS)
@@ -118,10 +116,10 @@ static TEEC_Result benchmark_get_bench_buf_paddr(uint64_t *paddr_ts_buf,
 
 static void *mmap_paddr(intptr_t paddr, uint64_t size)
 {
-	int devmem = 0;
-	off_t offset = 0;
-	off_t page_addr = 0;
-	intptr_t *hw_addr = NULL;
+	int   devmem;
+	off_t offset;
+	off_t page_addr;
+	intptr_t *hw_addr;
 
 	devmem = open("/dev/mem", O_RDWR);
 	if (!devmem)
@@ -165,18 +163,14 @@ static bool benchmark_check_mode(void)
 /* Adding timestamp to buffer */
 void bm_timestamp(void)
 {
-	struct tee_ts_cpu_buf *cpu_buf = NULL;
-	uint64_t ts_i = 0;
-	void *ret_addr = NULL;
-	uint32_t cur_cpu = 0;
-	int ret = 0;
 	cpu_set_t cpu_set_old;
 	cpu_set_t cpu_set_tmp;
+	struct tee_ts_cpu_buf *cpu_buf;
 	struct tee_time_st ts_data;
-
-	memset(&cpu_set_old, 0, sizeof(cpu_set_old));
-	memset(&cpu_set_tmp, 0, sizeof(cpu_set_tmp));
-	memset(&ts_data, 0, sizeof(ts_data));
+	uint64_t ts_i;
+	void *ret_addr;
+	uint32_t cur_cpu;
+	int ret;
 
 	if (pthread_mutex_trylock(&teec_bench_mu))
 		return;

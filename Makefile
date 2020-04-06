@@ -102,8 +102,8 @@ optee-client:
 .PHONY: optee-client-final
 optee-client-final: optee-client
 	cp ${TEE_SDK_DIR}/optee_client/out/tee-supplicant/tee-supplicant ./out/rootfs/bin/
-	cp ${TEE_SDK_DIR}/optee_client/out/ustar-sandbox/ustar-sandbox ./out/rootfs/bin/
 	cp -d ${TEE_SDK_DIR}/optee_client/out/libteec/libteec.so* ./out/rootfs/lib/
+	cp ${TEE_SDK_DIR}/optee_client/out/ustar-sandbox/ustar-sandbox ./out/rootfs/bin/
 
 .PHONY: optee-client-clean
 optee-client-clean:

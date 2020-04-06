@@ -121,13 +121,12 @@ uint32 sha256_k[64] =
 static void sha256_transf(sha256_ctx *ctx, const unsigned char *message,
                           unsigned int block_nb)
 {
-    uint32 w[64] = { 0 };
-    uint32 wv[8] = { 0 };
-    uint32 t1 = 0;
-    uint32 t2 = 0;
-    const unsigned char *sub_block = NULL;
-    int i = 0;
-    int j = 0;
+    uint32 w[64];
+    uint32 wv[8];
+    uint32 t1, t2;
+    const unsigned char *sub_block;
+    int i;
+    int j;
 
     for (i = 0; i < (int) block_nb; i++) {
         sub_block = message + (i << 6);
@@ -164,12 +163,9 @@ static void sha256_transf(sha256_ctx *ctx, const unsigned char *message,
     }
 }
 
-void sha256(const unsigned char *message, unsigned int len,
-	    unsigned char *digest)
+void sha256(const unsigned char *message, unsigned int len, unsigned char *digest)
 {
     sha256_ctx ctx;
-
-    memset(&ctx, 0, sizeof(ctx));
 
     sha256_init(&ctx);
     sha256_update(&ctx, message, len);
@@ -178,8 +174,7 @@ void sha256(const unsigned char *message, unsigned int len,
 
 void sha256_init(sha256_ctx *ctx)
 {
-    int i = 0;
-
+    int i;
     for (i = 0; i < 8; i++) {
         ctx->h[i] = sha256_h0[i];
     }
@@ -191,11 +186,9 @@ void sha256_init(sha256_ctx *ctx)
 void sha256_update(sha256_ctx *ctx, const unsigned char *message,
                    unsigned int len)
 {
-    unsigned int block_nb = 0;
-    unsigned int new_len = 0;
-    unsigned int rem_len = 0;
-    unsigned int tmp_len = 0;
-    const unsigned char *shifted_message = NULL;
+    unsigned int block_nb;
+    unsigned int new_len, rem_len, tmp_len;
+    const unsigned char *shifted_message;
 
     tmp_len = SHA256_BLOCK_SIZE - ctx->len;
     rem_len = len < tmp_len ? len : tmp_len;
@@ -226,10 +219,10 @@ void sha256_update(sha256_ctx *ctx, const unsigned char *message,
 
 void sha256_final(sha256_ctx *ctx, unsigned char *digest)
 {
-    unsigned int block_nb = 0;
-    unsigned int pm_len = 0;
-    unsigned int len_b = 0;
-    int i = 0;
+    unsigned int block_nb;
+    unsigned int pm_len;
+    unsigned int len_b;
+    int i;
 
     block_nb = (1 + ((SHA256_BLOCK_SIZE - 9)
                      < (ctx->len % SHA256_BLOCK_SIZE)));

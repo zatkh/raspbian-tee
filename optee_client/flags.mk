@@ -4,8 +4,6 @@
 
 CROSS_COMPILE   ?= arm-linux-gnueabihf-
 CC              ?= $(CROSS_COMPILE)gcc
-CXX              ?= $(CROSS_COMPILE)g++
-
 AR		?= $(CROSS_COMPILE)ar
 
 CFLAGS          := -Wall -Wbad-function-cast -Wcast-align \
@@ -16,7 +14,7 @@ CFLAGS          := -Wall -Wbad-function-cast -Wcast-align \
 		   -Wmissing-noreturn -Wmissing-prototypes -Wnested-externs \
 		   -Wpointer-arith -Wshadow -Wstrict-prototypes \
 		   -Wswitch-default -Wunsafe-loop-optimizations \
-		   -Wwrite-strings -D_FILE_OFFSET_BITS=64
+		   -Wwrite-strings
 ifeq ($(CFG_WERROR),y)
 CFLAGS		+= -Werror
 endif

@@ -24,9 +24,7 @@ add_compile_options (
 	-Wwrite-strings -fPIC
 )
 if(CFG_WERROR)
-    add_compile_options(-Werror -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
-	-Wno-missing-prototypes -Wno-discarded-qualifiers -Wno-suggest-attribute=noreturn -Wno-pointer-arith -Wno-missing-declarations
-)
+    add_compile_options(-Werror)
 endif(CFG_WERROR)
 
 find_program(CCACHE_FOUND ccache)

@@ -43,11 +43,12 @@
 void hmac_sha256_init(hmac_sha256_ctx *ctx, const unsigned char *key,
                       unsigned int key_size)
 {
-    unsigned int fill = 0;
-    unsigned int num = 0;
-    const unsigned char *key_used = NULL;
-    unsigned char key_temp[SHA256_DIGEST_SIZE] = { 0 };
-    int i = 0;
+    unsigned int fill;
+    unsigned int num;
+
+    const unsigned char *key_used;
+    unsigned char key_temp[SHA256_DIGEST_SIZE];
+    int i;
 
     if (key_size == SHA256_BLOCK_SIZE) {
         key_used = key;
@@ -103,8 +104,8 @@ void hmac_sha256_update(hmac_sha256_ctx *ctx, const unsigned char *message,
 void hmac_sha256_final(hmac_sha256_ctx *ctx, unsigned char *mac,
                        unsigned int mac_size)
 {
-    unsigned char digest_inside[SHA256_DIGEST_SIZE] = { 0 };
-    unsigned char mac_temp[SHA256_DIGEST_SIZE] = { 0 };
+    unsigned char digest_inside[SHA256_DIGEST_SIZE];
+    unsigned char mac_temp[SHA256_DIGEST_SIZE];
 
     sha256_final(&ctx->ctx_inside, digest_inside);
     sha256_update(&ctx->ctx_outside, digest_inside, SHA256_DIGEST_SIZE);
@@ -117,8 +118,6 @@ void hmac_sha256(const unsigned char *key, unsigned int key_size,
           unsigned char *mac, unsigned mac_size)
 {
     hmac_sha256_ctx ctx;
-
-    memset(&ctx, 0, sizeof(ctx));
 
     hmac_sha256_init(&ctx, key, key_size);
     hmac_sha256_update(&ctx, message, message_len);

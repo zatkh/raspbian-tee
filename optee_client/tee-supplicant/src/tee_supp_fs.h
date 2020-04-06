@@ -31,6 +31,8 @@
 
 struct tee_ioctl_param;
 
+int tee_supp_fs_init(void);
+
 TEEC_Result tee_supp_fs_process(size_t num_params,
 				struct tee_ioctl_param *params);
 

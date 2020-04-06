@@ -31,8 +31,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <gprof.h>
 #include <inttypes.h>
-#include <prof.h>
 #include <pthread.h>
 #include <rpmb.h>
 #include <stdbool.h>
@@ -97,7 +97,7 @@ static void *thread_main(void *a);
 
 static size_t num_waiters_inc(struct thread_arg *arg)
 {
-	size_t ret = 0;
+	size_t ret;
 
 	tee_supp_mutex_lock(&arg->mutex);
 	arg->num_waiters++;
@@ -110,7 +110,7 @@ static size_t num_waiters_inc(struct thread_arg *arg)
 
 static size_t num_waiters_dec(struct thread_arg *arg)
 {
-	size_t ret = 0;
+	size_t ret;
 
 	tee_supp_mutex_lock(&arg->mutex);
 	assert(arg->num_waiters);
@@ -140,7 +140,7 @@ static int get_value(size_t num_params, struct tee_ioctl_param *params,
 
 static struct tee_shm *find_tshm(int id)
 {
-	struct tee_shm *tshm = NULL;
+	struct tee_shm *tshm;
 
 	tee_supp_mutex_lock(&shm_mutex);
 
@@ -155,8 +155,8 @@ static struct tee_shm *find_tshm(int id)
 
 static struct tee_shm *pop_tshm(int id)
 {
-	struct tee_shm *tshm = NULL;
-	struct tee_shm *prev = NULL;
+	struct tee_shm *tshm;
+	struct tee_shm *prev;
 
 	tee_supp_mutex_lock(&shm_mutex);
 
@@ -197,7 +197,7 @@ static void push_tshm(struct tee_shm *tshm)
 static int get_param(size_t num_params, struct tee_ioctl_param *params,
 		     const uint32_t idx, TEEC_SharedMemory *shm)
 {
-	struct tee_shm *tshm = NULL;
+	struct tee_shm *tshm;
 
 	if (idx >= num_params)
 		return -1;
@@ -255,11 +255,10 @@ static uint32_t load_ta(size_t num_params, struct tee_ioctl_param *params)
 {
 	int ta_found = 0;
 	size_t size = 0;
-	struct tee_ioctl_param_value *val_cmd = NULL;
 	TEEC_UUID uuid;
+	struct tee_ioctl_param_value *val_cmd;
 	TEEC_SharedMemory shm_ta;
 
-	memset(&uuid, 0, sizeof(uuid));
 	memset(&shm_ta, 0, sizeof(shm_ta));
 
 	if (num_params != 2 || get_value(num_params, params, 0, &val_cmd) ||
@@ -289,8 +288,8 @@ static uint32_t load_ta(size_t num_params, struct tee_ioctl_param *params)
 
 static struct tee_shm *alloc_shm(int fd, size_t size)
 {
-	struct tee_shm *shm = NULL;
 	struct tee_ioctl_shm_alloc_data data;
+	struct tee_shm *shm;
 
 	memset(&data, 0, sizeof(data));
 
@@ -320,9 +319,9 @@ static struct tee_shm *alloc_shm(int fd, size_t size)
 
 static struct tee_shm *register_local_shm(int fd, size_t size)
 {
-	struct tee_shm *shm = NULL;
-	void *buf = NULL;
 	struct tee_ioctl_shm_register_data data;
+	struct tee_shm *shm;
+	void *buf;
 
 	memset(&data, 0, sizeof(data));
 
@@ -356,8 +355,8 @@ static struct tee_shm *register_local_shm(int fd, size_t size)
 static uint32_t process_alloc(struct thread_arg *arg, size_t num_params,
 			      struct tee_ioctl_param *params)
 {
-	struct tee_ioctl_param_value *val = NULL;
-	struct tee_shm *shm = NULL;
+	struct tee_ioctl_param_value *val;
+	struct tee_shm *shm;
 
 	if (num_params != 1 || get_value(num_params, params, 0, &val))
 		return TEEC_ERROR_BAD_PARAMETERS;
@@ -379,9 +378,9 @@ static uint32_t process_alloc(struct thread_arg *arg, size_t num_params,
 
 static uint32_t process_free(size_t num_params, struct tee_ioctl_param *params)
 {
-	struct tee_ioctl_param_value *val = NULL;
-	struct tee_shm *shm = NULL;
-	int id = 0;
+	struct tee_ioctl_param_value *val;
+	struct tee_shm *shm;
+	int id;
 
 	if (num_params != 1 || get_value(num_params, params, 0, &val))
 		return TEEC_ERROR_BAD_PARAMETERS;
@@ -416,10 +415,8 @@ static uint32_t process_free(size_t num_params, struct tee_ioctl_param *params)
 
 static int open_dev(const char *devname, uint32_t *gen_caps)
 {
-	int fd = 0;
 	struct tee_ioctl_version_data vers;
-
-	memset(&vers, 0, sizeof(vers));
+	int fd;
 
 	fd = open(devname, O_RDWR);
 	if (fd < 0)
@@ -445,9 +442,9 @@ err:
 
 static int get_dev_fd(uint32_t *gen_caps)
 {
-	int fd = 0;
-	char name[PATH_MAX] = { 0 };
-	size_t n = 0;
+	int fd;
+	char name[PATH_MAX];
+	size_t n;
 
 	for (n = 0; n < MAX_DEV_SEQ; n++) {
 		snprintf(name, sizeof(name), "/dev/teepriv%zu", n);
@@ -471,9 +468,6 @@ static uint32_t process_rpmb(size_t num_params, struct tee_ioctl_param *params)
 	TEEC_SharedMemory req;
 	TEEC_SharedMemory rsp;
 
-	memset(&req, 0, sizeof(req));
-	memset(&rsp, 0, sizeof(rsp));
-
 	if (get_param(num_params, params, 0, &req) ||
 	    get_param(num_params, params, 1, &rsp))
 		return TEEC_ERROR_BAD_PARAMETERS;
@@ -484,8 +478,6 @@ static uint32_t process_rpmb(size_t num_params, struct tee_ioctl_param *params)
 static bool read_request(int fd, union tee_rpc_invoke *request)
 {
 	struct tee_ioctl_buf_data data;
-
-	memset(&data, 0, sizeof(data));
 
 	data.buf_ptr = (uintptr_t)request;
 	data.buf_len = sizeof(*request);
@@ -499,8 +491,6 @@ static bool read_request(int fd, union tee_rpc_invoke *request)
 static bool write_response(int fd, union tee_rpc_invoke *request)
 {
 	struct tee_ioctl_buf_data data;
-
-	memset(&data, 0, sizeof(data));
 
 	data.buf_ptr = (uintptr_t)&request->send;
 	data.buf_len = sizeof(struct tee_iocl_supp_send_arg) +
@@ -517,8 +507,8 @@ static bool find_params(union tee_rpc_invoke *request, uint32_t *func,
 			size_t *num_params, struct tee_ioctl_param **params,
 			size_t *num_meta)
 {
-	struct tee_ioctl_param *p = NULL;
-	size_t n = 0;
+	struct tee_ioctl_param *p;
+	size_t n;
 
 	p = (struct tee_ioctl_param *)(&request->recv + 1);
 
@@ -545,10 +535,8 @@ static bool find_params(union tee_rpc_invoke *request, uint32_t *func,
 
 static bool spawn_thread(struct thread_arg *arg)
 {
-	int e = 0;
 	pthread_t tid;
-
-	memset(&tid, 0, sizeof(tid));
+	int e;
 
 	DMSG("Spawning a new thread");
 
@@ -574,16 +562,15 @@ static bool spawn_thread(struct thread_arg *arg)
 
 static bool process_one_request(struct thread_arg *arg)
 {
-	size_t num_params = 0;
-	size_t num_meta = 0;
-	struct tee_ioctl_param *params = NULL;
-	uint32_t func = 0;
-	uint32_t ret = 0;
 	union tee_rpc_invoke request;
-
-	memset(&request, 0, sizeof(request));
+	size_t num_params;
+	size_t num_meta;
+	struct tee_ioctl_param *params;
+	uint32_t func;
+	uint32_t ret;
 
 	DMSG("looping");
+	memset(&request, 0, sizeof(request));
 	request.recv.num_params = RPC_NUM_PARAMS;
 
 	/* Let it be known that we can deal with meta parameters */
@@ -618,13 +605,10 @@ static bool process_one_request(struct thread_arg *arg)
 		ret = process_free(num_params, params);
 		break;
 	case OPTEE_MSG_RPC_CMD_GPROF:
-		ret = prof_process(num_params, params, "gmon-");
+		ret = gprof_process(num_params, params);
 		break;
 	case OPTEE_MSG_RPC_CMD_SOCKET:
 		ret = tee_socket_process(num_params, params);
-		break;
-	case OPTEE_MSG_RPC_CMD_FTRACE:
-		ret = prof_process(num_params, params, "ftrace-");
 		break;
 	default:
 		EMSG("Cmd [0x%" PRIx32 "] not supported", func);
@@ -660,8 +644,8 @@ int main(int argc, char *argv[])
 	struct thread_arg arg = { .fd = -1 };
 	bool daemonize = false;
 	char *dev = NULL;
-	int e = 0;
-	int i = 0;
+	int e;
+	int i;
 
 	e = pthread_mutex_init(&arg.mutex, NULL);
 	if (e) {
@@ -694,6 +678,11 @@ int main(int argc, char *argv[])
 			EMSG("failed to find an OP-TEE supplicant device");
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (tee_supp_fs_init() != 0) {
+		EMSG("error tee_supp_fs_init");
+		exit(EXIT_FAILURE);
 	}
 
 	if (daemonize && daemon(0, 0) < 0) {
@@ -737,8 +726,8 @@ bool tee_supp_param_is_value(struct tee_ioctl_param *param)
 
 void *tee_supp_param_to_va(struct tee_ioctl_param *param)
 {
-	struct tee_shm *tshm = NULL;
-	size_t end_offs = 0;
+	struct tee_shm *tshm;
+	size_t end_offs;
 
 	if (!tee_supp_param_is_memref(param))
 		return NULL;

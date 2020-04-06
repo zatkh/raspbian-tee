@@ -67,10 +67,10 @@ void handle_db_destroy(struct handle_db *db)
 
 int handle_get(struct handle_db *db, void *ptr)
 {
-	size_t n = 0;
-	void *p = NULL;
-	size_t new_max_ptrs = 0;
-	int ret = 0;
+	size_t n;
+	void *p;
+	size_t new_max_ptrs;
+	int ret;
 
 	if (!db || !ptr)
 		return -1;
@@ -112,7 +112,7 @@ out:
 
 void *handle_put(struct handle_db *db, int handle)
 {
-	void *p = NULL;
+	void *p;
 
 	if (!db || handle < 0)
 		return NULL;
@@ -134,7 +134,7 @@ out:
 
 void *handle_lookup(struct handle_db *db, int handle)
 {
-	void *p = NULL;
+	void *p;
 
 	if (!db || handle < 0)
 		return NULL;
@@ -157,7 +157,7 @@ void handle_foreach_put(struct handle_db *db,
 			void (*cb)(int handle, void *ptr, void *arg),
 			void *arg)
 {
-	size_t n = 0;
+	size_t n;
 
 	if (!db || !cb)
 		return;

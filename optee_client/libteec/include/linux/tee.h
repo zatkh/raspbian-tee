@@ -467,14 +467,4 @@ struct tee_iocl_supp_send_arg {
  * munmap(): unmaps previously shared memory
  */
 
-#define TEE_DIFC_IOC_SHM_ALLOC	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 10, \
-				     struct tee_ioctl_shm_alloc_data)
-
-#define TEE_DIFC_IOC_SHM_REGISTER_FD	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 11, \
-				     struct tee_ioctl_shm_register_fd_data)
-
-#define TEE_DIFC_IOC_SHM_REGISTER   _IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 12, \
-				     struct tee_ioctl_shm_register_data)
-
-
 #endif /*__TEE_H*/

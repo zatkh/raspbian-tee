@@ -63,7 +63,7 @@ static struct handle_db dir_handle_db =
 static size_t tee_fs_get_absolute_filename(char *file, char *out,
 					   size_t out_size)
 {
-	int s = 0;
+	int s;
 
 	if (!file || !out || (out_size <= strlen(tee_fs_root) + 1))
 		return 0;
@@ -80,8 +80,6 @@ static int do_mkdir(const char *path, mode_t mode)
 {
 	struct stat st;
 
-	memset(&st, 0, sizeof(st));
-
 	if (mkdir(path, mode) != 0 && errno != EEXIST)
 		return -1;
 
@@ -96,7 +94,7 @@ static int mkpath(const char *path, mode_t mode)
 	int status = 0;
 	char *subpath = strdup(path);
 	char *prev = subpath;
-	char *curr = NULL;
+	char *curr;
 
 	while (status == 0 && (curr = strchr(prev, '/')) != 0) {
 		/*
@@ -116,12 +114,12 @@ static int mkpath(const char *path, mode_t mode)
 	return status;
 }
 
-static int tee_supp_fs_init(void)
+int tee_supp_fs_init(void)
 {
-	size_t n = 0;
+	size_t n;
 	mode_t mode = 0700;
 
-	n = snprintf(tee_fs_root, sizeof(tee_fs_root), "%s/", TEE_FS_PARENT_PATH);
+	n = snprintf(tee_fs_root, sizeof(tee_fs_root), "%s/tee/", TEE_FS_PARENT_PATH);
 	if (n >= sizeof(tee_fs_root))
 		return -1;
 
@@ -133,7 +131,7 @@ static int tee_supp_fs_init(void)
 
 static int open_wrapper(const char *fname, int flags)
 {
-	int fd = 0;
+	int fd;
 
 	while (true) {
 		fd = open(fname, flags | O_SYNC, 0600);
@@ -145,9 +143,9 @@ static int open_wrapper(const char *fname, int flags)
 static TEEC_Result ree_fs_new_open(size_t num_params,
 				   struct tee_ioctl_param *params)
 {
-	char abs_filename[PATH_MAX] = { 0 };
-	char *fname = NULL;
-	int fd = 0;
+	char abs_filename[PATH_MAX];
+	char *fname;
+	int fd;
 
 	if (num_params != 3 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -184,11 +182,11 @@ static TEEC_Result ree_fs_new_open(size_t num_params,
 static TEEC_Result ree_fs_new_create(size_t num_params,
 				     struct tee_ioctl_param *params)
 {
-	char abs_filename[PATH_MAX] = { 0 };
-	char abs_dir[PATH_MAX] = { 0 };
-	char *fname = NULL;
-	char *d = NULL;
-	int fd = 0;
+	char abs_filename[PATH_MAX];
+	char abs_dir[PATH_MAX];
+	char *fname;
+	char *d;
+	int fd;
 	const int flags = O_RDWR | O_CREAT | O_TRUNC;
 
 	if (num_params != 3 ||
@@ -263,7 +261,7 @@ out:
 static TEEC_Result ree_fs_new_close(size_t num_params,
 				    struct tee_ioctl_param *params)
 {
-	int fd = 0;
+	int fd;
 
 	if (num_params != 1 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -281,12 +279,12 @@ static TEEC_Result ree_fs_new_close(size_t num_params,
 static TEEC_Result ree_fs_new_read(size_t num_params,
 				   struct tee_ioctl_param *params)
 {
-	uint8_t *buf = NULL;
-	size_t len = 0;
-	off_t offs = 0;
-	int fd = 0;
-	ssize_t r = 0;
-	size_t s = 0;
+	uint8_t *buf;
+	size_t len;
+	off_t offs;
+	int fd;
+	ssize_t r;
+	size_t s;
 
 	if (num_params != 2 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -326,11 +324,11 @@ static TEEC_Result ree_fs_new_read(size_t num_params,
 static TEEC_Result ree_fs_new_write(size_t num_params,
 				    struct tee_ioctl_param *params)
 {
-	uint8_t *buf = NULL;
-	size_t len = 0;
-	off_t offs = 0;
-	int fd = 0;
-	ssize_t r = 0;
+	uint8_t *buf;
+	size_t len;
+	off_t offs;
+	int fd;
+	ssize_t r;
 
 	if (num_params != 2 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -366,8 +364,8 @@ static TEEC_Result ree_fs_new_write(size_t num_params,
 static TEEC_Result ree_fs_new_truncate(size_t num_params,
 				       struct tee_ioctl_param *params)
 {
-	size_t len = 0;
-	int fd = 0;
+	size_t len;
+	int fd;
 
 	if (num_params != 1 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -388,9 +386,9 @@ static TEEC_Result ree_fs_new_truncate(size_t num_params,
 static TEEC_Result ree_fs_new_remove(size_t num_params,
 				     struct tee_ioctl_param *params)
 {
-	char abs_filename[PATH_MAX] = { 0 };
-	char *fname = NULL;
-	char *d = NULL;
+	char abs_filename[PATH_MAX];
+	char *fname;
+	char *d;
 
 	if (num_params != 2 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -430,11 +428,11 @@ static TEEC_Result ree_fs_new_remove(size_t num_params,
 static TEEC_Result ree_fs_new_rename(size_t num_params,
 				     struct tee_ioctl_param *params)
 {
-	char old_abs_filename[PATH_MAX] = { 0 };
-	char new_abs_filename[PATH_MAX] = { 0 };
-	char *old_fname = NULL;
-	char *new_fname = NULL;
-	bool overwrite = false;
+	char old_abs_filename[PATH_MAX];
+	char new_abs_filename[PATH_MAX];
+	char *old_fname;
+	char *new_fname;
+	bool overwrite;
 
 	if (num_params != 3 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -479,11 +477,11 @@ static TEEC_Result ree_fs_new_rename(size_t num_params,
 static TEEC_Result ree_fs_new_opendir(size_t num_params,
 				      struct tee_ioctl_param *params)
 {
-	char abs_filename[PATH_MAX] = { 0 };
-	char *fname = NULL;
-	DIR *dir = NULL;
-	int handle = 0;
-	struct dirent *dent = NULL;
+	char abs_filename[PATH_MAX];
+	char *fname;
+	DIR *dir;
+	int handle;
+	struct dirent *dent;
 	bool empty = true;
 
 	if (num_params != 3 ||
@@ -544,7 +542,7 @@ static TEEC_Result ree_fs_new_opendir(size_t num_params,
 static TEEC_Result ree_fs_new_closedir(size_t num_params,
 				       struct tee_ioctl_param *params)
 {
-	DIR *dir = NULL;
+	DIR *dir;
 
 	if (num_params != 1 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -563,11 +561,11 @@ static TEEC_Result ree_fs_new_closedir(size_t num_params,
 static TEEC_Result ree_fs_new_readdir(size_t num_params,
 				      struct tee_ioctl_param *params)
 {
-	DIR *dir = NULL;
-	struct dirent *dirent = NULL;
-	char *buf = NULL;
-	size_t len = 0;
-	size_t fname_len = 0;
+	DIR *dir;
+	struct dirent *dirent;
+	char *buf;
+	size_t len;
+	size_t fname_len;
 
 	if (num_params != 2 ||
 	    (params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
@@ -609,15 +607,6 @@ TEEC_Result tee_supp_fs_process(size_t num_params,
 {
 	if (!num_params || !tee_supp_param_is_value(params))
 		return TEEC_ERROR_BAD_PARAMETERS;
-
-	if (strlen(tee_fs_root) == 0) {
-		if (tee_supp_fs_init() != 0) {
-			EMSG("error tee_supp_fs_init: failed to create %s/",
-				TEE_FS_PARENT_PATH);
-			memset(tee_fs_root, 0, sizeof(tee_fs_root));
-			return TEEC_ERROR_STORAGE_NOT_AVAILABLE;
-		}
-	}
 
 	switch (params->u.value.a) {
 	case OPTEE_MRF_OPEN:
