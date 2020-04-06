@@ -66,31 +66,28 @@ typedef labelvec_t x_handlevec_t;
 #define __NR_temporarily_declassify 403
 #define __NR_restore_suspended_capabilities 404
 
-
-#define __NR_set_task_domain 428
-#define __NR_udom_ops 429
-#define __NR_udom_mem_ops 430
-#define __NR_udom_alloc 431
-#define __NR_udom_free 432
-#define __NR_udom_mprotect 433
-#define __NR_udom_get 434
-#define __NR_udom_set 435
-#define __NR_udom_mmap 436
-#define __NR_udom_mmap_cache 437
-#define __NR_udom_mprotect_set 438
-#define __NR_udom_mprotect_evict 439
-#define __NR_udom_mprotect_grouping 440
-#define __NR_udom_mprotect_exec 441
-#define __NR_mprotect_exec 442
-#define __NR_udom_munmap 443
-#define __NR_alloc_label 444
-#define __NR_set_task_label 445
-#define __NR_udom_clone 446
-#define __NR_mkdir_labeled 447
-#define __NR_create_labeled 448
-#define __NR_set_labeled_file 449
-
-
+#define __NR_set_task_domain 400
+#define __NR_udom_ops 401
+#define __NR_udom_mem_ops 402
+#define __NR_udom_alloc 403
+#define __NR_udom_free 404
+#define __NR_udom_mprotect 405
+#define __NR_udom_get 406
+#define __NR_udom_set 407
+#define __NR_udom_mmap 408
+#define __NR_udom_mmap_cache 409
+#define __NR_udom_mprotect_set 410
+#define __NR_udom_mprotect_evict 411
+#define __NR_udom_mprotect_grouping 412
+#define __NR_udom_mprotect_exec 413
+#define __NR_mprotect_exec 414
+#define __NR_udom_munmap 415
+#define __NR_alloc_label 416
+#define __NR_set_task_label 417
+#define __NR_udom_clone 418
+#define __NR_mkdir_labeled 419
+#define __NR_create_labeled 420
+#define __NR_set_labeled_file 421
 
 
 #define DOMAIN_NOACCESS	0
