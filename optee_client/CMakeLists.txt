@@ -24,7 +24,9 @@ add_compile_options (
 	-Wwrite-strings -fPIC
 )
 if(CFG_WERROR)
-    add_compile_options(-Werror)
+    add_compile_options(-Werror -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
+	-Wno-missing-prototypes -Wno-discarded-qualifiers -Wno-suggest-attribute=noreturn -Wno-pointer-arith -Wno-missing-declarations
+)
 endif(CFG_WERROR)
 
 find_program(CCACHE_FOUND ccache)
@@ -35,4 +37,5 @@ endif(CCACHE_FOUND)
 
 add_subdirectory (libteec)
 add_subdirectory (tee-supplicant)
+add_subdirectory (ustar-sandbox)
 add_subdirectory (public)

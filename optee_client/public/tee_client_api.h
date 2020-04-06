@@ -37,6 +37,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 #include <limits.h>
+#include "difc_api.h"
 
 /*
  * Defines the number of available memory references in an open session or
@@ -164,26 +165,27 @@ extern "C" {
 /**
  *  Standard defined error codes.
  */
-#define TEEC_SUCCESS                0x00000000
-#define TEEC_ERROR_GENERIC          0xFFFF0000
-#define TEEC_ERROR_ACCESS_DENIED    0xFFFF0001
-#define TEEC_ERROR_CANCEL           0xFFFF0002
-#define TEEC_ERROR_ACCESS_CONFLICT  0xFFFF0003
-#define TEEC_ERROR_EXCESS_DATA      0xFFFF0004
-#define TEEC_ERROR_BAD_FORMAT       0xFFFF0005
-#define TEEC_ERROR_BAD_PARAMETERS   0xFFFF0006
-#define TEEC_ERROR_BAD_STATE        0xFFFF0007
-#define TEEC_ERROR_ITEM_NOT_FOUND   0xFFFF0008
-#define TEEC_ERROR_NOT_IMPLEMENTED  0xFFFF0009
-#define TEEC_ERROR_NOT_SUPPORTED    0xFFFF000A
-#define TEEC_ERROR_NO_DATA          0xFFFF000B
-#define TEEC_ERROR_OUT_OF_MEMORY    0xFFFF000C
-#define TEEC_ERROR_BUSY             0xFFFF000D
-#define TEEC_ERROR_COMMUNICATION    0xFFFF000E
-#define TEEC_ERROR_SECURITY         0xFFFF000F
-#define TEEC_ERROR_SHORT_BUFFER     0xFFFF0010
-#define TEEC_ERROR_EXTERNAL_CANCEL  0xFFFF0011
-#define TEEC_ERROR_TARGET_DEAD      0xFFFF3024
+#define TEEC_SUCCESS                       0x00000000
+#define TEEC_ERROR_STORAGE_NOT_AVAILABLE   0xF0100003
+#define TEEC_ERROR_GENERIC                 0xFFFF0000
+#define TEEC_ERROR_ACCESS_DENIED           0xFFFF0001
+#define TEEC_ERROR_CANCEL                  0xFFFF0002
+#define TEEC_ERROR_ACCESS_CONFLICT         0xFFFF0003
+#define TEEC_ERROR_EXCESS_DATA             0xFFFF0004
+#define TEEC_ERROR_BAD_FORMAT              0xFFFF0005
+#define TEEC_ERROR_BAD_PARAMETERS          0xFFFF0006
+#define TEEC_ERROR_BAD_STATE               0xFFFF0007
+#define TEEC_ERROR_ITEM_NOT_FOUND          0xFFFF0008
+#define TEEC_ERROR_NOT_IMPLEMENTED         0xFFFF0009
+#define TEEC_ERROR_NOT_SUPPORTED           0xFFFF000A
+#define TEEC_ERROR_NO_DATA                 0xFFFF000B
+#define TEEC_ERROR_OUT_OF_MEMORY           0xFFFF000C
+#define TEEC_ERROR_BUSY                    0xFFFF000D
+#define TEEC_ERROR_COMMUNICATION           0xFFFF000E
+#define TEEC_ERROR_SECURITY                0xFFFF000F
+#define TEEC_ERROR_SHORT_BUFFER            0xFFFF0010
+#define TEEC_ERROR_EXTERNAL_CANCEL         0xFFFF0011
+#define TEEC_ERROR_TARGET_DEAD             0xFFFF3024
 
 /**
  * Function error origins, of type TEEC_ErrorOrigin. These indicate where in
@@ -345,7 +347,7 @@ typedef struct {
  *
  * @param a  The first integer value.
  *
- * @param b  The second second value.
+ * @param b  The second value.
  */
 typedef struct {
 	uint32_t a;
@@ -381,6 +383,8 @@ typedef struct {
 	TEEC_Context *ctx;
 	uint32_t session_id;
 } TEEC_Session;
+
+
 
 /**
  * struct TEEC_Operation - Holds information and memory references used in
@@ -541,6 +545,40 @@ void TEEC_ReleaseSharedMemory(TEEC_SharedMemory *sharedMemory);
  *                  or invoke.
  */
 void TEEC_RequestCancellation(TEEC_Operation *operation);
+
+
+/***************difc replacements*********************/
+
+#ifdef ENABLE_TEE_DIFC
+
+typedef struct {
+	int fd;
+	bool reg_mem;
+	struct label_struct label;
+	//uint32_t session_id;
+} difc_session;
+
+TEEC_Result difc_create_enclave(TEEC_Context *context,
+			     TEEC_Session *session,
+			     const TEEC_UUID *destination,
+			     uint32_t connectionMethod,
+			     const void *connectionData,
+			     TEEC_Operation *operation,
+			     uint32_t *returnOrigin);
+
+
+void difc_cleanup_enclave(TEEC_Session *session);
+
+TEEC_Result teec_difc_register_shared_memory (TEEC_Context *ctx, TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
+						    TEEC_SharedMemory *shm,
+						    int fd);
+
+TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm);
+void teec_difc_free(TEEC_SharedMemory *shm);
+						
+#endif
 
 #ifdef __cplusplus
 }

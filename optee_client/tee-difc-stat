@@ -1,0 +1,18 @@
+ .vscode/settings.json          |   3 +-
+ libteec/CMakeLists.txt         |   4 +
+ libteec/include/difc_api.h     | 154 ++++++++++++
+ libteec/include/difc_mem.h     |  60 +++++
+ libteec/include/linux/tee.h    |  10 +
+ libteec/include/memdom_lib.h   | 124 ++++++++++
+ libteec/include/smv_lib.h      |  65 +++++
+ libteec/src/difc_api.c         | 430 ++++++++++++++++++++++++++++++++
+ libteec/src/difc_mem.c         | 545 +++++++++++++++++++++++++++++++++++++++++
+ libteec/src/memdom_lib.c       | 435 ++++++++++++++++++++++++++++++++
+ libteec/src/smv_lib.c          | 227 +++++++++++++++++
+ libteec/src/tee_client_api.c   | 269 ++++++++++++++++++++
+ public/difc_api.h              | 127 ++++++++++
+ public/tee_client_api.h        |  37 +++
+ ustar-sandbox/src/difc_api.c   |   8 +-
+ ustar-sandbox/src/difc_api.h   |   2 +-
+ ustar-sandbox/src/difc_demos.c |   6 +-
+ 17 files changed, 2497 insertions(+), 9 deletions(-)

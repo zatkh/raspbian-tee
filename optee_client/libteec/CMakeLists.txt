@@ -16,7 +16,7 @@ endif()
 option (CFG_TEE_BENCHMARK "Build with benchmark support" OFF)
 
 set (CFG_TEE_CLIENT_LOG_LEVEL "1" CACHE STRING "libteec log level")
-set (CFG_TEE_CLIENT_LOG_FILE "/data/tee/logs/teec.log" CACHE STRING "Location of libteec log")
+set (CFG_TEE_CLIENT_LOG_FILE "/data/tee/teec.log" CACHE STRING "Location of libteec log")
 
 ################################################################################
 # Source files
@@ -24,6 +24,10 @@ set (CFG_TEE_CLIENT_LOG_FILE "/data/tee/logs/teec.log" CACHE STRING "Location of
 set (SRC
 	src/tee_client_api.c
 	src/teec_trace.c
+	src/difc_api.c 
+	src/difc_mem.c
+	src/smv_lib.c
+	src/memdom_lib.c
 )
 
 if (CFG_TEE_BENCHMARK)
@@ -33,7 +37,7 @@ endif()
 ################################################################################
 # Built library
 ################################################################################
-add_library (teec SHARED ${SRC})
+add_library (teec ${SRC})
 
 set_target_properties (teec PROPERTIES
 	VERSION ${PROJECT_VERSION}
@@ -71,4 +75,5 @@ target_link_libraries (teec
 ################################################################################
 # FIXME: This should in someway harmonize with CFG_TEE_CLIENT_LOAD_PATH
 # FIXME: Should we change this to /usr/local/lib?
-install (TARGETS teec DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install (TARGETS teec LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+                      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
