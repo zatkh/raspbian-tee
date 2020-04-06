@@ -37,6 +37,8 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 #include <limits.h>
+#include "difc_api.h"
+
 
 /*
  * Defines the number of available memory references in an open session or
@@ -541,6 +543,42 @@ void TEEC_ReleaseSharedMemory(TEEC_SharedMemory *sharedMemory);
  *                  or invoke.
  */
 void TEEC_RequestCancellation(TEEC_Operation *operation);
+
+
+
+/***************difc replacements*********************/
+
+#ifdef ENABLE_TEE_DIFC
+
+typedef struct {
+	int fd;
+	bool reg_mem;
+	struct label_struct label;
+	//uint32_t session_id;
+} difc_session;
+
+TEEC_Result difc_create_enclave(TEEC_Context *context,
+			     TEEC_Session *session,
+			     const TEEC_UUID *destination,
+			     uint32_t connectionMethod,
+			     const void *connectionData,
+			     TEEC_Operation *operation,
+			     uint32_t *returnOrigin);
+
+
+void difc_cleanup_enclave(TEEC_Session *session);
+
+TEEC_Result teec_difc_register_shared_memory (TEEC_Context *ctx, TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
+						    TEEC_SharedMemory *shm,
+						    int fd);
+
+TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm);
+void teec_difc_free(TEEC_SharedMemory *shm);
+						
+#endif
+
 
 #ifdef __cplusplus
 }
