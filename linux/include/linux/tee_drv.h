@@ -21,6 +21,12 @@
 #include <linux/list.h>
 #include <linux/tee.h>
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+#include <linux/security.h>
+#include <azure-sphere/security.h>
+
+#endif
+
 /*
  * The file describes the API provided by the generic TEE driver to the
  * specific TEE driver.
@@ -54,6 +60,11 @@ struct tee_context {
 	void *data;
 	struct kref refcount;
 	bool releasing;
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+	struct list_head slabel;
+	struct list_head ilabel;
+	//unsigned long etag;
+	#endif
 };
 
 struct tee_param_memref {
@@ -111,6 +122,13 @@ struct tee_driver_ops {
 			    struct page **pages, size_t num_pages,
 			    unsigned long start);
 	int (*shm_unregister)(struct tee_context *ctx, struct tee_shm *shm);
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	int (*difc_open_session)(struct tee_context *ctx,
+			    struct tee_ioctl_open_session_arg *arg,
+			    struct tee_param *param);
+
+	#endif	
 };
 
 /**
@@ -342,6 +360,8 @@ struct tee_shm *tee_shm_priv_alloc(struct tee_device *teedev, size_t size);
 struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 				 size_t length, u32 flags);
 
+
+struct tee_shm *tee_shm_register_fd(struct tee_context *ctx, int fd);
 /**
  * tee_shm_is_registered() - Check if shared memory object in registered in TEE
  * @shm:	Shared memory handle

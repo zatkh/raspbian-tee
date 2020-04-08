@@ -381,4 +381,39 @@ struct tee_ioctl_shm_register_data {
  * munmap(): unmaps previously shared memory
  */
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+struct tee_ioctl_shm_register_fd_data {
+	__s64 fd;
+	__u64 size;
+	__u32 flags;
+	__s32 id;
+} __aligned(8);
+
+
+#define TEE_DIFC_IOC_SHM_ALLOC	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 10, \
+				     struct tee_ioctl_shm_alloc_data)
+
+#define TEE_DIFC_IOC_SHM_REGISTER_FD	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 11, \
+				     struct tee_ioctl_shm_register_fd_data)
+
+#define TEE_DIFC_IOC_SHM_REGISTER   _IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 12, \
+				     struct tee_ioctl_shm_register_data)
+
+#define TEE_DIFC_IOC_OPEN_SESSION	_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 13, \
+				     struct tee_ioctl_buf_data)
+
+#define TEE_DIFC_IOC_CLOSE_SESSION	_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 14, \
+				     struct tee_ioctl_close_session_arg)
+
+#define TEE_DIFC_IOC_INVOKE		_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 15, \
+				     struct tee_ioctl_buf_data)
+
+#define TEE_IOC_SHM_REGISTER_FD	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 16, \
+				     struct tee_ioctl_shm_register_fd_data)
+
+#define TEE_DIFC_IOC_SHM_REGISTER_FD	_IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 17, \
+				     struct tee_ioctl_shm_register_fd_data)
+#endif /* CONFIG_EXTENDED_LSM_DIFC */
+
 #endif /*__TEE_H*/

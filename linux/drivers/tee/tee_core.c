@@ -22,6 +22,13 @@
 #include <linux/slab.h>
 #include <linux/tee_drv.h>
 #include <linux/uaccess.h>
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+#include <linux/security.h>
+#include <linux/cred.h>
+#include <azure-sphere/difc.h>
+#endif
+
 #include "tee_private.h"
 
 #define TEE_NUM_DEVICES	32
@@ -636,6 +643,320 @@ out:
 	return rc;
 }
 
+
+
+
+static int tee_ioctl_shm_register_fd(struct tee_context *ctx,
+			struct tee_ioctl_shm_register_fd_data __user *udata)
+{
+	struct tee_ioctl_shm_register_fd_data data;
+	struct tee_shm *shm;
+	long ret;
+
+	if (copy_from_user(&data, udata, sizeof(data)))
+		return -EFAULT;
+
+	/* Currently no input flags are supported */
+	if (data.flags)
+		return -EINVAL;
+
+	shm = tee_shm_register_fd(ctx, data.fd);
+	if (IS_ERR_OR_NULL(shm))
+		return -EINVAL;
+
+	data.id = shm->id;
+	data.flags = shm->flags;
+	data.size = shm->size;
+
+	if (copy_to_user(udata, &data, sizeof(data)))
+		ret = -EFAULT;
+	else
+		ret = tee_shm_get_fd(shm);
+
+	/*
+	 * When user space closes the file descriptor the shared memory
+	 * should be freed or if tee_shm_get_fd() failed then it will
+	 * be freed immediately.
+	 */
+	tee_shm_put(shm);
+	return ret;
+}
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+
+static void difc_free_label(struct list_head *label) {
+	struct tag *t, *t_next;
+	list_for_each_entry_safe(t, t_next, label, next) {
+		list_del_rcu(&t->next);
+		kmem_cache_free(tag_struct, t);
+	}
+}
+
+
+static int tee_difc_ioctl_open_session(struct tee_context *ctx,
+				  struct tee_ioctl_buf_data __user *ubuf)
+{
+	int rc;
+	size_t n;
+	struct tee_ioctl_buf_data buf;
+	struct tee_ioctl_open_session_arg __user *uarg;
+	struct tee_ioctl_open_session_arg arg;
+	struct tee_ioctl_param __user *uparams = NULL;
+	struct tee_param *params = NULL;
+	bool have_session = false;
+	struct tag* new_tag;
+	unsigned long enc_tag;
+
+	if (!ctx->teedev->desc->ops->open_session)
+		return -EINVAL;
+
+	if (copy_from_user(&buf, ubuf, sizeof(buf)))
+		return -EFAULT;
+
+/*	if (buf.buf_len > TEE_MAX_ARG_SIZE ||
+	    buf.buf_len < sizeof(struct tee_ioctl_open_session_arg))
+		return -EINVAL;
+*/
+	//tag the owner thread/
+	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+	enc_tag = security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
+	new_tag->content=enc_tag;
+	difc_lsm_debug(" enc_tag: %lu \n",enc_tag);
+	list_add_tail_rcu(&new_tag->next, &ctx->slabel);
+
+	//memcpy(&msg_arg->params[2].u.value, enc_tag, sizeof(enc_tag));
+	
+
+
+	uarg = u64_to_user_ptr(buf.buf_ptr);
+	if (copy_from_user(&arg, uarg, sizeof(arg)))
+		return -EFAULT;
+
+/*
+	if (sizeof(arg) + TEE_IOCTL_PARAM_SIZE(arg.num_params) != buf.buf_len)
+		return -EINVAL;
+*/
+	if (arg.num_params) {
+		params = kcalloc(arg.num_params, sizeof(struct tee_param),
+				 GFP_KERNEL);
+		if (!params)
+			return -ENOMEM;
+		uparams = uarg->params;
+		rc = params_from_user(ctx, params, arg.num_params, uparams);
+		if (rc)
+			goto out;
+	}
+
+	rc = ctx->teedev->desc->ops->open_session(ctx, &arg, params);
+	if (rc)
+		goto out;
+	have_session = true;
+
+	if (put_user(arg.session, &uarg->session) ||
+	    put_user(arg.ret, &uarg->ret) ||
+	    put_user(arg.ret_origin, &uarg->ret_origin)) {
+		rc = -EFAULT;
+		goto out;
+	}
+	rc = params_to_user(uparams, arg.num_params, params);
+out:
+	/*
+	 * If we've succeeded to open the session but failed to communicate
+	 * it back to user space, close the session again to avoid leakage.
+	 */
+	if (rc && have_session && ctx->teedev->desc->ops->close_session)
+		ctx->teedev->desc->ops->close_session(ctx, arg.session);
+
+	if (params) {
+		/* Decrease ref count for all valid shared memory pointers */
+		for (n = 0; n < arg.num_params; n++)
+			if (tee_param_is_memref(params + n) &&
+			    params[n].u.memref.shm)
+				tee_shm_put(params[n].u.memref.shm);
+		kfree(params);
+	}
+
+	return rc;
+}
+
+
+
+static int
+tee_difc_ioctl_close_session(struct tee_context *ctx,
+			struct tee_ioctl_close_session_arg __user *uarg)
+{
+	struct tee_ioctl_close_session_arg arg;
+
+		difc_free_label(&ctx->ilabel);
+	  	list_del(&ctx->ilabel);
+
+		difc_free_label(&ctx->slabel);
+		list_del(&ctx->slabel);
+
+
+	if (!ctx->teedev->desc->ops->close_session)
+		return -EINVAL;
+
+	if (copy_from_user(&arg, uarg, sizeof(arg)))
+		return -EFAULT;
+
+	return ctx->teedev->desc->ops->close_session(ctx, arg.session);
+}
+
+
+
+static int
+tee_difc_ioctl_shm_register(struct tee_context *ctx,
+		       struct tee_ioctl_shm_register_data __user *udata)
+{
+	long ret;
+	struct tee_ioctl_shm_register_data data;
+	struct tee_shm *shm;
+
+	if (copy_from_user(&data, udata, sizeof(data)))
+		return -EFAULT;
+
+	/* Currently no input flags are supported */
+	if (data.flags)
+		return -EINVAL;
+
+	shm = tee_shm_register(ctx, data.addr, data.length,
+			       TEE_SHM_DMA_BUF | TEE_SHM_USER_MAPPED);
+	if (IS_ERR(shm))
+		return PTR_ERR(shm);
+
+	data.id = shm->id;
+	data.flags = shm->flags;
+	data.length = shm->size;
+
+	if (copy_to_user(udata, &data, sizeof(data)))
+		ret = -EFAULT;
+	else
+		ret = tee_shm_get_fd(shm);
+	/*
+	 * When user space closes the file descriptor the shared memory
+	 * should be freed or if tee_shm_get_fd() failed then it will
+	 * be freed immediately.
+	 */
+	tee_shm_put(shm);
+	return ret;
+}
+
+static int tee_difc_ioctl_shm_register_fd(struct tee_context *ctx,
+			struct tee_ioctl_shm_register_fd_data __user *udata)
+{
+	struct tee_ioctl_shm_register_fd_data data;
+	struct tee_shm *shm;
+	long ret;
+
+	if (copy_from_user(&data, udata, sizeof(data)))
+		return -EFAULT;
+
+	/* Currently no input flags are supported */
+	if (data.flags)
+		return -EINVAL;
+
+	shm = tee_shm_register_fd(ctx, data.fd);
+	if (IS_ERR_OR_NULL(shm))
+		return -EINVAL;
+
+	data.id = shm->id;
+	data.flags = shm->flags;
+	data.size = shm->size;
+
+	if (copy_to_user(udata, &data, sizeof(data)))
+		ret = -EFAULT;
+	else
+		ret = tee_shm_get_fd(shm);
+
+	/*
+	 * When user space closes the file descriptor the shared memory
+	 * should be freed or if tee_shm_get_fd() failed then it will
+	 * be freed immediately.
+	 */
+	tee_shm_put(shm);
+	return ret;
+}
+
+
+static int tee_difc_ioctl_invoke(struct tee_context *ctx,
+			    struct tee_ioctl_buf_data __user *ubuf)
+{
+	int rc;
+	size_t n;
+	struct tee_ioctl_buf_data buf;
+	struct tee_ioctl_invoke_arg __user *uarg;
+	struct tee_ioctl_invoke_arg arg;
+	struct tee_ioctl_param __user *uparams = NULL;
+	struct tee_param *params = NULL;
+	struct task_security_struct *tsec = current_security();
+
+
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	if (tsec->type==TAG_CONF)
+	{
+		difc_lsm_debug(" not tagged thread can not access an enclave \n");
+		return -EPERM;
+	}
+	else{
+		rc = is_label_subset(&ctx->slabel, &tsec->olabel, &tsec->slabel);
+			if (rc < 0 && down != 0) {
+			difc_lsm_debug("enclave secrecy: restrectricted operation \n" );
+				rc = -EPERM;
+				goto out;
+			}
+	}
+
+	#endif
+
+
+
+	if (copy_from_user(&buf, ubuf, sizeof(buf)))
+		return -EFAULT;
+
+	uarg = u64_to_user_ptr(buf.buf_ptr);
+	if (copy_from_user(&arg, uarg, sizeof(arg)))
+		return -EFAULT;
+
+
+	if (arg.num_params) {
+		params = kcalloc(arg.num_params, sizeof(struct tee_param),
+				 GFP_KERNEL);
+		if (!params)
+			return -ENOMEM;
+		uparams = uarg->params;
+		rc = params_from_user(ctx, params, arg.num_params, uparams);
+		if (rc)
+			goto out;
+	}
+
+	rc = ctx->teedev->desc->ops->invoke_func(ctx, &arg, params);
+	if (rc)
+		goto out;
+
+	if (put_user(arg.ret, &uarg->ret) ||
+	    put_user(arg.ret_origin, &uarg->ret_origin)) {
+		rc = -EFAULT;
+		goto out;
+	}
+	rc = params_to_user(uparams, arg.num_params, params);
+out:
+	if (params) {
+		/* Decrease ref count for all valid shared memory pointers */
+		for (n = 0; n < arg.num_params; n++)
+			if (tee_param_is_memref(params + n) &&
+			    params[n].u.memref.shm)
+				tee_shm_put(params[n].u.memref.shm);
+		kfree(params);
+	}
+	return rc;
+}
+#endif // CONFIG_EXTENDED_LSM_DIFC
+
+
 static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct tee_context *ctx = filp->private_data;
@@ -648,14 +969,28 @@ static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return tee_ioctl_shm_alloc(ctx, uarg);
 	case TEE_IOC_SHM_REGISTER:
 		return tee_ioctl_shm_register(ctx, uarg);
+	case TEE_IOC_SHM_REGISTER_FD:
+		return tee_ioctl_shm_register_fd(ctx, uarg);
+	case TEE_DIFC_IOC_SHM_ALLOC:
+		return tee_ioctl_shm_alloc(ctx, uarg);
+	case TEE_DIFC_IOC_SHM_REGISTER:
+		return tee_difc_ioctl_shm_register(ctx, uarg);
+	case TEE_DIFC_IOC_SHM_REGISTER_FD:
+		return tee_difc_ioctl_shm_register_fd(ctx, uarg);	
+	case TEE_DIFC_IOC_OPEN_SESSION:
+		return tee_difc_ioctl_open_session(ctx, uarg);
 	case TEE_IOC_OPEN_SESSION:
-		return tee_ioctl_open_session(ctx, uarg);
+			return tee_ioctl_open_session(ctx, uarg);
 	case TEE_IOC_INVOKE:
 		return tee_ioctl_invoke(ctx, uarg);
+	case TEE_DIFC_IOC_INVOKE:
+		return tee_difc_ioctl_invoke(ctx, uarg);
 	case TEE_IOC_CANCEL:
 		return tee_ioctl_cancel(ctx, uarg);
 	case TEE_IOC_CLOSE_SESSION:
 		return tee_ioctl_close_session(ctx, uarg);
+	case TEE_DIFC_IOC_CLOSE_SESSION:
+		return tee_difc_ioctl_close_session(ctx, uarg);
 	case TEE_IOC_SUPPL_RECV:
 		return tee_ioctl_supp_recv(ctx, uarg);
 	case TEE_IOC_SUPPL_SEND:
