@@ -135,12 +135,15 @@ optee-examples-final: optee-examples
 	cp ${TEE_SDK_DIR}/optee_examples/hotp/host/optee_example_hotp ./out/rootfs/bin/
 	cp ${TEE_SDK_DIR}/optee_examples/random/host/optee_example_random ./out/rootfs/bin/
 	cp ${TEE_SDK_DIR}/optee_examples/secure_storage/host/optee_example_secure_storage ./out/rootfs/bin/
+	cp ${TEE_SDK_DIR}/optee_examples/darknetp/host/optee_example_darknetp ./out/rootfs/bin/
 	cp ${TEE_SDK_DIR}/optee_examples/acipher/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/aes/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/hello_world/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/hotp/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/random/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/secure_storage/ta/*.ta ./out/rootfs/lib/optee_armtz/
+	cp ${TEE_SDK_DIR}/optee_examples/darknetp/ta/*.ta ./out/rootfs/lib/optee_armtz/
+
 
 ################################################################################
 # linux
