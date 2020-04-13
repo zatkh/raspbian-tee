@@ -1,3 +1,6 @@
 [submodule "optee_examples/darknetp"]
 	path = optee_examples/darknetp
 	url = git@github.com:zatkh/darknetp.git
+[submodule "projects"]
+	path = projects
+	url = git@github.com:zatkh/TEE-TLS-server.git
