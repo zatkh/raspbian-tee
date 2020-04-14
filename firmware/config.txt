@@ -55,7 +55,7 @@
 # Enable audio (loads snd_bcm2835)
 dtparam=audio=on
 
-enable_uart=1
+#enable_uart=1
 
 kernel_address=0x02000000
 

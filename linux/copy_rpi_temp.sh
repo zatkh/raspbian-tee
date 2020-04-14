@@ -33,6 +33,7 @@ sudo cp -R $PWD/../out/rootfs/lib/* $FS/lib/
 
 cp -R $PWD/../out/boot/* $BOOT
 #sudo cp -r $PWD/../out/rootfs/* $FS
+#sudo cp -a /tmp/tee_share/ /media/zt/rootfs/home/
 
 
 

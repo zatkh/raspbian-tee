@@ -89,6 +89,10 @@ OPTEE_OS_CLEAN_FLAGS ?= O=out/arm CFG_ARM32_core=y
 optee-os-clean:
 	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_CLEAN_FLAGS) clean
 
+
+.PHONY: linux-clean
+linuxs-clean:
+	$(MAKE) -j8 -C ${TEE_SDK_DIR}/linux clean
 ################################################################################
 # OP-TEE client
 ################################################################################
@@ -111,7 +115,7 @@ optee-client-clean:
 clean
 
 
-clean: arm-tf-clean u-boot-clean optee-os-clean optee-client-clean
+clean: linux-clean optee-os-clean optee-client-clean arm-tf-clean u-boot-clean
 .PHONY: clean
 
 install:
