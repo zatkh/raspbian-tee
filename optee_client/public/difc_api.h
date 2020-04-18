@@ -16,9 +16,10 @@
 #include <sched.h>
 #include </usr/include/linux/sched.h>
 
-
 #ifndef ENABLE_TEE_DIFC
 #define ENABLE_TEE_DIFC
+#define SW_UDOM_ENABLE
+//#define HW_UDOM_ENABLE
 #endif
 
 // labels and capabilities related variables & data structs should be here
@@ -65,11 +66,10 @@ typedef labelvec_t x_handlevec_t;
 #define SECRECY_LABEL 0
 #define INTEGRITY_LABEL 1
 
-#define __NR_clone_temp 220
-#define __NR_permanent_declassify 402
-#define __NR_temporarily_declassify 403
-#define __NR_restore_suspended_capabilities 404
 // difc syscalls
+
+
+
 #define __NR_set_task_domain 400
 #define __NR_udom_ops 401
 #define __NR_udom_mem_ops 402
@@ -93,8 +93,11 @@ typedef labelvec_t x_handlevec_t;
 #define __NR_create_labeled 420
 #define __NR_set_labeled_file 421
 
-
-
+// should be removed: not used anymore
+#define __NR_clone_temp 500
+#define __NR_permanent_declassify 500
+#define __NR_temporarily_declassify 500
+#define __NR_restore_suspended_capabilities 500
 
 #define DOMAIN_NOACCESS	0
 #define DOMAIN_CLIENT	1
@@ -121,5 +124,37 @@ enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
 enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIVID,UDOM_PRIV_OPS};
 enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
 
+int difc_replace_labels(long secrecySet[], int sec_len, long integritySet[], int int_len);
+int difc_set_label(unsigned long label, enum label_types ops);
+int difc_add_label(unsigned long label, int label_type);
+int difc_remove_label(unsigned long label, int label_type);
+int difc_create_label(int type, enum label_types mode);
+int create_labeled_dir(char *pname, int mode, unsigned long secrecySet[], int sec_len, unsigned long integritySet[],
+                       int int_len);
 
+int create_labeled_file(char *pathname, int flags, int mode,unsigned long secrecySet[], int sec_len,
+                      unsigned long integritySet[], int int_len);
+int modify_file_labels(const char *pname, long secrecySet[], int sec_len, long integritySet[],
+                       int int_len);
+int do_permanent_declassification(capability_t labels[], int length, int type, int label_type);
+int do_temporarily_declassification(capability_t labels[], int length, int type, int label_type);
+int restore_suspended_capabilities(capability_t labels[], int length, int type, int label_type);
+int map_to_domain(unsigned long addr, unsigned long counts, int domain);
+int sys_udom_alloc(int flags, int perm);
+int sys_udom_free(unsigned long udom);
+unsigned long sys_udom_mmap(unsigned long udom_id, unsigned long addr, unsigned long len,
+			      unsigned long prot, unsigned long flags,
+			      unsigned long fd);
+
+int sys_udom_mprotect(void *ptr, size_t size, unsigned long orig_prot, unsigned long udom_id) ; 
+int sys_udom_get(int udom_id);
+int sys_udom_set(int udom_id, unsigned val) ; 
+int thread_create(void (*start_func)(void), void *stack);  
+int udom_thread_create(void (*start_func)(void), void *stack, struct label_struct *label);
+
+int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops smv_domain_op,
+                                          long memdom_id1);
+int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
+                                         enum udom_priv_ops memdom_priv_op, long memdom_priv_value);
+//int udom_thread_create(void (*start_func)(void), void *stack, void* label);           
 #endif /*_UAPI_DIFC_H */

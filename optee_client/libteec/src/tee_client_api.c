@@ -992,57 +992,110 @@ TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
 TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm)
 
 {
-	size_t alignment = 1024 * 1024;
+	int memdom_id=0;
 
-    int udom_id = udom_create();
+
+#ifdef SW_UDOM_ENABLE
+    int smv_id;
+
+    smv_main_init(1);
+    
+  //  pthread_mutex_init(&ulock, NULL);
+
+    smv_id = smv_create();
+    memdom_id = memdom_create();
+
+    if(memdom_id == -1){
+    	fprintf(stderr, "failed to create thread local memdom for smv %d\n", smv_id);
+    	return -1;
+  	}
+
+  	smv_join_domain(memdom_id, smv_id);
+  	memdom_priv_add(memdom_id, smv_id, MEMDOM_READ | MEMDOM_WRITE | MEMDOM_ALLOCATE | MEMDOM_EXECUTE);
+    
+
+  	shm->buffer = (void*)memdom_mmap(memdom_id, 0, shm->size, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_MEMDOM, 0, 0);
+  	if(shm->buffer == MAP_FAILED){
+    	perror("mmap for thread stack: ");
+    	return -1;
+  	}
+
+	  shm->udom=memdom_id;
+	  free_list_init( memdom_id);
+
+	 //  smv_join_domain(memdom_id, 0);
+   // memdom_priv_add(memdom_id, 0, MEMDOM_READ | MEMDOM_WRITE);
+
+
+
+#else
+
+    memdom_id = udom_create();
        
-    printf("allocated udom: %d \n", udom_id);
-
     void* addr= NULL;//(void*)0x100000;
 
-	shm->size=alignment;
-	shm->flags=TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
-
 // here we should check if prot is WO/RO/EO we should map to a predefined uTile instead of regular one
-     shm->buffer= udom_mmap(udom_id,addr , (alignment), 
+     shm->buffer= udom_mmap(memdom_id,addr ,shm->size, 
                                 PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS , 0, 0);
 	if( shm->buffer == MAP_FAILED ) {
-   		 printf("Failed to udom_create using mmap for udom %d\n", udom_id);
+   		 printf("Failed to udom_create using mmap for udom %d\n", memdom_id);
    		 shm->buffer = NULL;
 	}
 
-	shm->id=udom_id;
-	udom_free_list_init(shm->id);
-
-	return teec_difc_register_shared_memory(ctx,shm);
-
-}
-
-TEEC_Result teec_difc_malloc(TEEC_Context *ctx, TEEC_SharedMemory *shm)
-{
-if (shm->buffer == NULL)
-	{
-		printf("no shared udom registered \n");
-		return TEEC_ERROR_BAD_PARAMETERS;
-	}
-
-	shm->shadow_buffer=udom_alloc(shm->id, shm->alloced_size);
-
-	return TEEC_SUCCESS;
-
-}
-
-void teec_difc_free(TEEC_SharedMemory *shm)
-{
-
-if (shm->buffer == NULL)
-	{
-		printf("no shared udom registered \n");
-	}
-
-	 udom_free(shm->shadow_buffer);
-
-}
+	shm->udom=memdom_id;
+	ufree_list_init(memdom_id);
 
 #endif
 
+	return TEEC_RegisterSharedMemory(ctx,shm);
+
+}
+
+void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz)
+{
+	char *memblock = NULL;
+
+	//printf("[teec_difc_malloc] %d\n",shm->udom);
+
+	if (shm->buffer == MAP_FAILED)
+	{
+		printf("no shared udom registered \n");
+		return NULL;
+	}
+
+#ifdef SW_UDOM_ENABLE
+
+	memblock=memdom_alloc(shm->udom, sz);
+	if (memblock == NULL)
+	{
+		printf("no shared mem allocated \n");
+		return NULL;
+	}
+
+#else
+	memblock=udom_alloc(shm->udom, sz);
+	if (memblock== NULL)
+	{
+		printf("no shared mem allocated \n");
+		return NULL;
+	}
+#endif
+
+	return (void*)memblock;
+
+}
+
+void teec_difc_free(void* data)
+{
+
+
+#ifdef SW_UDOM_ENABLE
+
+	 memdom_free(data);
+#else
+	 udom_free(data);
+#endif
+}
+
+#endif

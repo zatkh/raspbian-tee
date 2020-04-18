@@ -152,7 +152,60 @@ int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
 
 
 int thread_create(void (*start_func)(void), void *stack) {
-  
+  /*
+   * The prototype of clone(2) is
+   *
+   * clone(int flags, void *stack, pid_t *ptid, void *tls, pid_t *ctid);
+   *
+   * See linux_syscall_wrappers.h for syscalls' calling conventions.
+   */
+  /*
+   * We do not use CLONE_CHILD_CLEARTID as we do not want any
+   * non-private futex signaling. Also, NaCl ABI does not require us
+   * to signal the futex on stack_flag.
+   */
+  int flags = (CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
+               CLONE_THREAD | CLONE_SYSVSEM | CLONE_SETTLS);
+  /*
+   * Make sure we can access stack[0] and align the stack address to a
+   * 16-byte boundary.
+   */
+  static const int kStackAlignmentMask = ~15;
+  stack = (void *) (((uintptr_t) stack - sizeof(uintptr_t)) &
+                    kStackAlignmentMask);
+  /* We pass start_func using the stack top. */
+  ((uintptr_t *) stack)[0] = (uintptr_t) start_func;
+
+  register uint32_t result __asm__("r0");
+  register uint32_t sysno __asm__("r7") = __NR_clone_temp;
+  register uint32_t a1 __asm__("r0") = flags;
+  register uint32_t a2 __asm__("r1") = (uint32_t) stack;
+  register uint32_t a3 __asm__("r2") = 0;  /* No CLONE_PARENT_SETTID. */
+  register uint32_t a5 __asm__("r3") = 0;  /* No CLONE_CHILD_CLEARTID. */
+    register uint32_t a4 __asm__("r4") = 0;
+
+  __asm__ __volatile__("svc #0\n"
+                       /*
+                        * If the return value of clone is non-zero, we are
+                        * in the parent thread of clone.
+                        */
+                       "cmp r0, #0\n"
+                       "bne 0f\n"
+                       /*
+                        * In child thread. Clear the frame pointer to
+                        * prevent debuggers from unwinding beyond this,
+                        * load start_func from the stack and call it.
+                        */
+                       "mov fp, #0\n"
+                       "ldr r0, [sp]\n"
+                       "blx r0\n"
+                       /* start_func never finishes. */
+                       "bkpt #0\n"
+                       "0:\n"
+                       : "=r"(result)
+                       : "r"(sysno),
+                         "r"(a1), "r"(a2), "r"(a3), "r"(a4), "r"(a5)
+                       : "memory");
 
   return 0;//irt_return_call(result);
 }

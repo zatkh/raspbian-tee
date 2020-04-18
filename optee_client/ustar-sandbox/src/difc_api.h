@@ -61,12 +61,6 @@ typedef labelvec_t x_handlevec_t;
 #define INTEGRITY_LABEL 1
 
 // difc syscalls
-#define __NR_clone_temp 220
-#define __NR_permanent_declassify 402
-#define __NR_temporarily_declassify 403
-#define __NR_restore_suspended_capabilities 404
-
-
 #define __NR_set_task_domain 400
 #define __NR_udom_ops 401
 #define __NR_udom_mem_ops 402
@@ -89,6 +83,12 @@ typedef labelvec_t x_handlevec_t;
 #define __NR_mkdir_labeled 419
 #define __NR_create_labeled 420
 #define __NR_set_labeled_file 421
+
+// should be removed: not used anymore
+#define __NR_clone_temp 500
+#define __NR_permanent_declassify 500
+#define __NR_temporarily_declassify 500
+#define __NR_restore_suspended_capabilities 500
 
 
 

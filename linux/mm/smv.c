@@ -9,10 +9,12 @@
 #include <asm/pgtable.h>
 #include <linux/smp.h>
 #include <linux/mm.h>
+#include <azure-sphere/difc.h>
 
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
+
 
 #define PGALLOC_GFP GFP_KERNEL | __GFP_NOTRACK | __GFP_REPEAT | __GFP_ZERO
 
@@ -29,10 +31,9 @@ int smv_main_init(void){
     int memdom_id = -1;
 
     if( !mm ) {
-        printk(KERN_ERR "[%s] current task does not have mm\n", __func__);
+        difc_lsm_debug( "[%s] current task does not have mm\n", __func__);
         return -1;
     }
-    printk(KERN_INFO "[%s] ------------------ %s pid %d ------------------\n", __func__, current->comm, current->pid);
     /* Mark this mm descriptor as using smv */
     mm->using_smv = 1;
 
@@ -69,7 +70,7 @@ int smv_create(void){
     /* SMP: protect shared smv bitmap */    
     mutex_lock(&mm->smv_metadataMutex);
 
-    slog(KERN_INFO "[%s] Before smv_create mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
+    slog("[%s] Before smv_create mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
             __func__, mm, atomic_long_read(&mm->nr_pmds), atomic_long_read(&mm->nr_ptes));
     /* Are we having too many smvs? */
     if( atomic_read(&mm->num_smvs) == SMV_ARRAY_SIZE ) {
@@ -85,7 +86,7 @@ int smv_create(void){
     /* Create the actual smv struct */
     smv = allocate_smv();
     if(smv==NULL)
-        printk(KERN_INFO "[%s] null alloc_pgd\n", __func__);
+        difc_lsm_debug("[%s] null alloc_pgd\n", __func__);
 
     smv->smv_id = smv_id;
     atomic_set(&smv->ntask, 0);
@@ -104,15 +105,15 @@ int smv_create(void){
     /* Increase total number of smv count in mm_struct */
     atomic_inc(&mm->num_smvs);
 
-    printk(KERN_INFO "Created new smv with ID %d, #smvs: %d / %d\n", 
+    difc_lsm_debug("Created new smv with ID %d, #smvs: %d / %d\n", 
             smv_id, atomic_read(&mm->num_smvs), SMV_ARRAY_SIZE);
     goto out;
 
 err:
-    printk(KERN_ERR "Too many smvs, cannot create more.\n");
+    difc_lsm_debug( "Too many smvs, cannot create more.\n");
     smv_id = -1;
 out:
-    slog(KERN_INFO "[%s] After smv_create mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
+    slog("[%s] After smv_create mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
             __func__, mm, atomic_long_read(&mm->nr_pmds), atomic_long_read(&mm->nr_ptes));
 
     mutex_unlock(&mm->smv_metadataMutex);
@@ -126,7 +127,7 @@ int smv_kill(int smv_id, struct mm_struct *mm){
 
     /* Cannot kill global smv or smvs with ID greater than LAST_RIBBON_INDEX */
     if( smv_id > LAST_RIBBON_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
         return -1;
     }
     
@@ -140,7 +141,7 @@ int smv_kill(int smv_id, struct mm_struct *mm){
     mutex_lock(&mm->smv_metadataMutex);
     smv = mm->smv_metadata[smv_id]; 
 
-    slog(KERN_INFO "[%s] killing smv metadata %p with ID %d\n", __func__, smv, smv_id);
+    slog("[%s] killing smv metadata %p with ID %d\n", __func__, smv, smv_id);
     /* TODO: check if current task has the permission to delete the smv, only master thread can do this */
     
     /* Clear smv_id-th bit in mm's smv_bitmapInUse */
@@ -148,13 +149,13 @@ int smv_kill(int smv_id, struct mm_struct *mm){
         clear_bit(smv_id, mm->smv_bitmapInUse);  
         mutex_unlock(&mm->smv_metadataMutex);
     } else {
-        printk(KERN_ERR "Error, trying to delete a smv that does not exist: smv %d, #smvs: %d\n", smv_id, atomic_read(&mm->num_smvs));
+        difc_lsm_debug( "Error, trying to delete a smv that does not exist: smv %d, #smvs: %d\n", smv_id, atomic_read(&mm->num_smvs));
         mutex_unlock(&mm->smv_metadataMutex);
         return -1;
     }
 
     /* Clear all smv_bitmap(Read/Write/Execute/Allocate) bits for this smv in all memdoms */  
-    slog(KERN_INFO "[%s] leaving all the joined memdoms\n", __func__);
+    slog("[%s] leaving all the joined memdoms\n", __func__);
     do {       
         mutex_lock(&smv->smv_mutex);
         memdom_id = find_first_bit(smv->memdom_bitmapJoin, SMV_ARRAY_SIZE);
@@ -171,7 +172,7 @@ int smv_kill(int smv_id, struct mm_struct *mm){
         pgd_free(mm, mm->pgd_smv[smv_id]);
         up_write(&mm->mmap_sem);
     } else{
-        slog(KERN_INFO "[%s] skip killing main thread's page tables. Will be done in exit_mmap()\n", __func__);
+        slog("[%s] skip killing main thread's page tables. Will be done in exit_mmap()\n", __func__);
     }
     
     /* Free the actual smv struct */
@@ -183,7 +184,7 @@ int smv_kill(int smv_id, struct mm_struct *mm){
     atomic_dec(&mm->num_smvs);
     mutex_unlock(&mm->smv_metadataMutex);
 
-    slog(KERN_INFO "[%s] Deleted smv with ID %d, #smvs: %d / %d\n", 
+    slog("[%s] Deleted smv with ID %d, #smvs: %d / %d\n", 
             __func__, smv_id, atomic_read(&mm->num_smvs), SMV_ARRAY_SIZE);
 
     return 0;
@@ -195,7 +196,7 @@ void free_all_smvs(struct mm_struct *mm){
     int index = 0;
     while( atomic_read(&mm->num_smvs) > 0 ){
         index = find_first_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE);
-        slog(KERN_INFO "[%s] killing smv %d, remaining #smvs: %d\n", __func__, index, atomic_read(&mm->num_smvs));
+        slog("[%s] killing smv %d, remaining #smvs: %d\n", __func__, index, atomic_read(&mm->num_smvs));
         smv_kill(index, mm);
     }
 }
@@ -207,7 +208,7 @@ int smv_join_memdom(int memdom_id, int smv_id){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX  || memdom_id > LAST_MEMDOM_INDEX) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
         return -1;
     }
 
@@ -215,7 +216,7 @@ int smv_join_memdom(int memdom_id, int smv_id){
     smv = current->mm->smv_metadata[smv_id];
     memdom = current->mm->memdom_metadata[memdom_id];
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %d: %p || smv %d: %p not found\n", __func__, memdom_id, memdom, smv_id, smv);
+        difc_lsm_debug( "[%s] memdom %d: %p || smv %d: %p not found\n", __func__, memdom_id, memdom, smv_id, smv);
         mutex_unlock(&mm->smv_metadataMutex);
         return -1;
     }   
@@ -225,7 +226,7 @@ int smv_join_memdom(int memdom_id, int smv_id){
     set_bit(memdom_id, smv->memdom_bitmapJoin);
     mutex_unlock(&smv->smv_mutex);
 
-    slog(KERN_INFO "[%s] smv id %d joined memdom %d\n", __func__, smv_id, memdom_id);
+    slog("[%s] smv id %d joined memdom %d\n", __func__, smv_id, memdom_id);
     return 0;
 }
 EXPORT_SYMBOL(smv_join_memdom);
@@ -236,11 +237,11 @@ int smv_leave_memdom(int memdom_id, int smv_id, struct mm_struct *mm){
     struct smv_struct *smv = NULL;
 
     if( smv_id > LAST_RIBBON_INDEX  || memdom_id > LAST_MEMDOM_INDEX) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
         return -1;
     }
 
-    slog(KERN_INFO "[%s] smv %d leaving memdom %d\n", __func__, smv_id, memdom_id);
+    slog("[%s] smv %d leaving memdom %d\n", __func__, smv_id, memdom_id);
 
     /* mm is not NULL is called by smv_kill() */
     if( mm == NULL ) {
@@ -253,10 +254,10 @@ int smv_leave_memdom(int memdom_id, int smv_id, struct mm_struct *mm){
     smv = mm->smv_metadata[smv_id];
     mutex_unlock(&mm->smv_metadataMutex);
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        difc_lsm_debug( "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
         return -1;
     }
-    slog(KERN_INFO "[%s] memdom %p, smv %p\n", __func__, memdom, smv);
+    slog("[%s] memdom %p, smv %p\n", __func__, memdom, smv);
 
     /* Clear smv_id-th bit in the bitmap for memdom */
     mutex_lock(&memdom->memdom_mutex);
@@ -281,7 +282,7 @@ int smv_is_in_memdom(int memdom_id, int smv_id){
     int in = 0;    
 
     if( smv_id > LAST_RIBBON_INDEX  || memdom_id > LAST_MEMDOM_INDEX) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d, memdom %d\n", __func__, smv_id, memdom_id);
         return 0;
     }
 
@@ -290,7 +291,7 @@ int smv_is_in_memdom(int memdom_id, int smv_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !smv ) {
-        printk(KERN_ERR "[%s] smv %p not found\n", __func__, smv);
+        difc_lsm_debug( "[%s] smv %p not found\n", __func__, smv);
         return 0;        
     }
     mutex_lock(&smv->smv_mutex);
@@ -308,7 +309,7 @@ int smv_exists(int smv_id){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
         return 0;
     }
     
@@ -319,7 +320,7 @@ int smv_exists(int smv_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !smv ) {
-        printk(KERN_ERR "[%s] smv %p does not exist.\n", __func__, smv);
+        difc_lsm_debug( "[%s] smv %p does not exist.\n", __func__, smv);
         return 0;        
     }
     return 1;
@@ -337,14 +338,14 @@ int register_smv_thread(int smv_id){
 
     /* A child smv cannot register itself to MAIN_THREAD or a non-existing smv */
     if( smv_id == MAIN_THREAD || smv_id > LAST_RIBBON_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
+        difc_lsm_debug( "[%s] Error, out of bound: smv %d\n", __func__, smv_id);
         return -1;
     }
 
     /* Tell the kernel we are about to run a new thread in a smv */
     mutex_lock(&mm->smv_metadataMutex);
     if( !test_bit(smv_id, mm->smv_bitmapInUse) ) {
-        printk(KERN_ERR "[%s] smv %d not found\n", __func__, smv_id);
+        difc_lsm_debug( "[%s] smv %d not found\n", __func__, smv_id);
         mutex_unlock(&mm->smv_metadataMutex);
         return -1;
     }
@@ -370,9 +371,9 @@ void smv_init(void){
                                       sizeof(struct smv_struct), 0,
                                       SLAB_HWCACHE_ALIGN, NULL);
     if( !smv_cachep ) {
-        printk(KERN_ERR "[%s] smv slab initialization failed...\n", __func__);
+        difc_lsm_debug( "[%s] smv slab initialization failed...\n", __func__);
     } else{
-        printk(KERN_INFO "[%s] smv slab initialized\n", __func__);
+        difc_lsm_debug("[%s] smv slab initialized\n", __func__);
     }
 }
 
@@ -382,7 +383,7 @@ pgd_t *smv_alloc_pgd(struct mm_struct *mm, int smv_id){
     pgd_t *pgd = NULL;
 
     if( !mm->using_smv ) {
-        printk(KERN_ERR "[%s] Error: current mm is not using smv model.\n", __func__);
+        difc_lsm_debug( "[%s] Error: current mm is not using smv model.\n", __func__);
         return NULL;
     }
 
@@ -393,7 +394,7 @@ pgd_t *smv_alloc_pgd(struct mm_struct *mm, int smv_id){
     } else {
         pgd = pgd_alloc(mm); // see implementation in pgtable.c
         if( unlikely(!pgd) ) { 
-            printk(KERN_ERR "[%s] failed to allocate new pgd.\n", __func__);
+            difc_lsm_debug( "[%s] failed to allocate new pgd.\n", __func__);
             return NULL;
         }
         /* Init page table lock */
@@ -403,7 +404,7 @@ pgd_t *smv_alloc_pgd(struct mm_struct *mm, int smv_id){
     /* Assign page table directory to mm_struct for smv_id */
     mm->pgd_smv[smv_id] = pgd;
 
-    slog(KERN_INFO "[%s] smv %d pgd %p\n", __func__, smv_id, mm->pgd_smv[smv_id]);
+    slog("[%s] smv %d pgd %p\n", __func__, smv_id, mm->pgd_smv[smv_id]);
     return pgd;
 }
 
@@ -455,8 +456,8 @@ void smv_free_mmap(struct mm_struct *mm, int smv_id){
      * Question: should we shootdown TLB? 
      */
     else {
-        slog(KERN_INFO "[%s] Free pgtables for smv %d\n", __func__, smv_id);
-        slog(KERN_INFO "[%s] Before smv_free_mmap mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
+        slog("[%s] Free pgtables for smv %d\n", __func__, smv_id);
+        slog("[%s] Before smv_free_mmap mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
                 __func__, mm, atomic_long_read(&mm->nr_pmds), atomic_long_read(&mm->nr_ptes));
         tlb_gather_mmu(&tlb, mm, 0, -1);
         update_hiwater_rss(mm);
@@ -472,7 +473,7 @@ void smv_free_mmap(struct mm_struct *mm, int smv_id){
         smv_free_pgtables(&tlb, vma, FIRST_USER_ADDRESS, USER_PGTABLES_CEILING);       
 
        	tlb_finish_mmu(&tlb, 0, -1);
-        slog(KERN_INFO "[%s] After smv_free_mmap mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
+        slog("[%s] After smv_free_mmap mm: %p, nr_pmds: %ld, nr_ptes: %ld\n", 
                 __func__, mm, atomic_long_read(&mm->nr_pmds), atomic_long_read(&mm->nr_ptes));
     }
 }

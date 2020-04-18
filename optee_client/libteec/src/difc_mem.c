@@ -8,6 +8,12 @@
 
 #define LOGGING 0
 #define __SOURCEFILE__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#define printf(format, ...) { \
+    if( LOGGING ) { \
+        fprintf(stderr, "[smv] " format, ##__VA_ARGS__); \
+        fflush(NULL);   \
+    }\
+}
 
 FILE* fp;
 
@@ -27,15 +33,16 @@ static int central_udom;
 /* Get calling thread's defualt udom id */
 int udom_private_id(void){
     int rv = 4;
+    char buf[1024];
 
-    rlog("private udom id: %d\n", rv);    
+    printf("private udom id: %d\n", rv);    
     return rv;
 }
 
-void udom_dumpFreeListHead(int udom_id){
+void  UdumpFreeListHead(int udom_id){
     struct free_list_struct *walk = udom[udom_id]->free_list_head;
     while ( walk ) {
-        rlog("[%s] udom %d free_list addr: %p, sz: 0x%lx\n", 
+        printf("[%s] udom %d free_list addr: %p, sz: 0x%lx\n", 
                 __func__, udom_id, walk->addr, walk->size);
         walk = walk->next;
     }
@@ -45,18 +52,18 @@ void udom_dumpFreeListHead(int udom_id){
 /* Insert a free list struct to the head of udom free list 
  * Reclaimed chunks are inserted to head
  */
-void udom_free_list_insert_to_head(int udom_id, struct free_list_struct *new_free_list){
+void  ufree_list_insert_to_head(int udom_id, struct free_list_struct *new_free_list){
     int rv;
     struct free_list_struct *head = udom[udom_id]->free_list_head;
     if( head ) {
         new_free_list->next = head;
     }
     udom[udom_id]->free_list_head = new_free_list;
-    rlog("[%s] udom %d inserted free list addr: %p, size: 0x%lx\n", __func__, udom_id, new_free_list->addr, new_free_list->size);
+    printf("[%s] udom %d inserted free list addr: %p, size: 0x%lx\n", __func__, udom_id, new_free_list->addr, new_free_list->size);
 }
 
 /* Initialize free list */
-void udom_free_list_init(int udom_id){
+void  ufree_list_init(int udom_id){
     struct free_list_struct *new_free_list;
 
     /* The first free list should be the entire mmap region */
@@ -72,12 +79,12 @@ void udom_free_list_init(int udom_id){
     new_free_list->next = NULL;
     udom[udom_id]->free_list_head = NULL;   // reclaimed chunk are inserted to head   
     udom[udom_id]->free_list_tail = new_free_list; 
-    rlog("[%s] udom %d: free_list addr: %p, size: 0x%lx bytes\n", __func__, udom_id, new_free_list->addr, new_free_list->size);
+    printf("[%s] udom %d: free_list addr: %p, size: 0x%lx bytes\n", __func__, udom_id, new_free_list->addr, new_free_list->size);
 }
 
 
 /* Round up the number to the nearest multiple */
-unsigned long udom_round_up(unsigned long numToRound, int multiple){
+unsigned long uround_up(unsigned long numToRound, int multiple){
     int remainder = 0;
     if( multiple == 0 ) {
         return 0;
@@ -106,7 +113,7 @@ int udom_create(void){
 
     central_udom = sys_udom_alloc(0, 1);
     udom_id = central_udom;
-    rlog("central_udom : %d\n", central_udom);
+    printf("central_udom : %d\n", central_udom);
 
       //  pthread_mutex_unlock(&so_mutex); 
 
@@ -154,7 +161,7 @@ int udom_kill(int udom_id){
     while( free_list ) {
         struct free_list_struct *tmp = free_list;
         free_list = free_list->next;
-        rlog("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
+        printf("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
 #ifdef UDOM_INTERCEPT_MALLOC
 #undef free
 #endif
@@ -219,7 +226,6 @@ void *udom_mmap(int udom_id,
     addr_temp = sys_udom_mmap(udom_id,(unsigned long)addr, len, prot, flags , fd);
 
     base=(void *)addr_temp;
-    printf("[udom_mmap] base is %p\n", base);   
 
     //pthread_mutex_lock(&so_mutex); 
    // udom_mprotect(base, len, prot, central_udom); 
@@ -230,9 +236,9 @@ void *udom_mmap(int udom_id,
     }
     udom[udom_id]->start = base;
     udom[udom_id]->total_size = len;
-    printf("Memdom ID %d mmaped at %p\n", udom_id, base);
+   // printf("Memdom ID %d mmaped at %p\n", udom_id, base);
 
-    printf("[%s] udom %d mmaped 0x%lx bytes at %p\n", __func__, udom_id, len, base);
+   // printf("[%s] udom %d mmaped 0x%lx bytes at %p\n", __func__, udom_id, len, base);
     return base;
 }
 
@@ -271,7 +277,7 @@ int udom_mprotect(unsigned long udom_id, void *addr, unsigned long len, unsigned
           
           } 
 
-    if( udom[udom_id] == NULL || !udom[udom_id]->start ) {
+    if(  !udom[udom_id]->start ) {
         /* Call mmap to set up initial memory region */
         memblock = (char*) udom_mmap(udom_id, addr, MEMDOM_HEAP_SIZE, 
                                        orig_prot , MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -330,12 +336,11 @@ void *udom_alloc(int udom_id, unsigned long sz) {
 #ifdef UDOM_INTERCEPT_MALLOC
 #undef malloc
 #endif
-        sz = udom_round_up ( sz + sizeof(struct block_header_struct), CHUNK_SIZE);
+        sz = uround_up ( sz + sizeof(struct block_header_struct), CHUNK_SIZE);
         memblock = (char*) malloc(sz);   
 
 #ifdef UDOM_INTERCEPT_MALLOC
 #define malloc(sz) udom_alloc(udom_private_id(), sz)
-
 #endif
         goto out;
     }
@@ -343,7 +348,7 @@ void *udom_alloc(int udom_id, unsigned long sz) {
 
 
     /* First time this udom allocates memory */
-    if( udom[udom_id] == NULL || !udom[udom_id]->start ) {
+    if( !udom[udom_id]->start ) {
         /* Call mmap to set up initial memory region */
         memblock = (char*) udom_mmap(udom_id, 0, MEMDOM_HEAP_SIZE, 
                                        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -355,13 +360,13 @@ void *udom_alloc(int udom_id, unsigned long sz) {
       mem_start[udom_id] = memblock;
      // pthread_mutex_lock(&udom[udom_id]->mlock);
         /* Initialize free list */
-        udom_free_list_init(udom_id);
+         ufree_list_init(udom_id);
     }
 
     else {
      // pthread_mutex_lock(&udom[udom_id]->mlock);
     }
- //printf("[%s] udom %d allocating sz 0x%lx bytes\n", __func__, udom_id, sz);
+  printf("[%s] udom %d allocating sz 0x%lx bytes\n", __func__, udom_id, sz);
     //do not need to set the udom permissions here. the defult is client that is set in mmap time
    // pkey_set_real(make_pkru(udom_id, PKEY_ENABLE_ALL), udom_id);
 
@@ -371,8 +376,8 @@ void *udom_alloc(int udom_id, unsigned long sz) {
      * | block header |      your data       |
      * --------------------------------------
      */
-    sz = udom_round_up ( sz + sizeof(struct block_header_struct), CHUNK_SIZE);
-   // printf("[%s] request rounded to 0x%lx bytes\n", __func__, sz);
+    sz = uround_up ( sz + sizeof(struct block_header_struct), CHUNK_SIZE);
+   printf("[%s] request rounded to 0x%lx bytes\n", __func__, sz);
 
     /* Get memory from the tail of free list, if the last free list is not available for allocation,
      * start searching the free list from the head until first fit is found.
@@ -382,7 +387,7 @@ void *udom_alloc(int udom_id, unsigned long sz) {
     /* Allocate from tail: 
      * check if the last element in free list is available, 
      * allocate memory from it */
-   // printf("[%s] udom %d search from tail for 0x%lx bytes, free_list->size %ld \n", __func__, udom_id, sz,free_list->size );     
+    printf("[%s] udom %d search from tail for 0x%lx bytes, free_list->size %ld \n", __func__, udom_id, sz,free_list->size );     
     if ( free_list && sz <= free_list->size ) {
         memblock = (char*)free_list->addr;
 
@@ -390,7 +395,7 @@ void *udom_alloc(int udom_id, unsigned long sz) {
         free_list->addr = (char*)free_list->addr + sz;
         free_list->size = free_list->size - sz;
 
-       // printf("[%s] udom %d last free list available, free_list addr: %p, remaining sz: 0x%lx bytes\n", __func__, udom_id, free_list->addr, free_list->size);
+       printf("[%s] udom %d last free list available, free_list addr: %p, remaining sz: 0x%lx bytes\n", __func__, udom_id, free_list->addr, free_list->size);
         /* Last chunk is now allocated, tail is not available from now */
         if( free_list->size == 0 ) {
 
@@ -404,7 +409,7 @@ void *udom_alloc(int udom_id, unsigned long sz) {
 #endif
 
             udom[udom_id]->free_list_tail = NULL;
-            //printf("[%s] free_list size is 0, freed this free_list_struct, the next allocate should request from free_list_head\n", __func__);
+            printf("[%s] free_list size is 0, freed this free_list_struct, the next allocate should request from free_list_head\n", __func__);
         }
         goto out;
     }
@@ -412,15 +417,15 @@ void *udom_alloc(int udom_id, unsigned long sz) {
     /* Allocate from head: 
      * ok the last free list is not available, 
      * let's start searching from the head for the first fit */
-   // printf("[%s] udom %d search from head for 0x%lx bytes\n", __func__, udom_id, sz);     
-    udom_dumpFreeListHead(udom_id);
+   printf("[%s] udom %d search from head for 0x%lx bytes\n", __func__, udom_id, sz);     
+     UdumpFreeListHead(udom_id);
     free_list = udom[udom_id]->free_list_head;
     while (free_list) {
         if( prev ) {
-            //rlog("[%s] udom %d prev->addr %p, prev->size 0x%lx bytes\n", __func__, udom_id, prev->addr, prev->size);
+            //printf("[%s] udom %d prev->addr %p, prev->size 0x%lx bytes\n", __func__, udom_id, prev->addr, prev->size);
         }
         if( free_list ) {
-           // rlog("[%s] udom %d free_list->addr %p, free_list->size 0x%lx bytes\n", __func__, udom_id, free_list->addr, free_list->size);
+           // printf("[%s] udom %d free_list->addr %p, free_list->size 0x%lx bytes\n", __func__, udom_id, free_list->addr, free_list->size);
         }
         
         /* Found free list! */
@@ -461,7 +466,7 @@ void *udom_alloc(int udom_id, unsigned long sz) {
 #endif
 
 
-               // rlog("[%s] udom %d removed free list\n", __func__, udom_id);
+               // printf("[%s] udom %d removed free list\n", __func__, udom_id);
             }
             goto out;
         }
@@ -481,10 +486,10 @@ out:
         header.addr = (void*)memblock;
         header.memdom_id = udom_id;
         header.size = sz;
-        //rlog("[%s] pkru : %p\n", __func__, rdpkru());
+        //printf("[%s] pkru : %p\n", __func__, rdpkru());
         memcpy(memblock, &header, sizeof(struct block_header_struct));
         memblock = memblock + sizeof(struct block_header_struct);
-        rlog("[%s] header: addr %p, allocated 0x%lx bytes and returning data addr %p\n", __func__, header.addr, sz, memblock);
+        printf("[%s] header: addr %p, allocated 0x%lx bytes and returning data addr %p\n", __func__, header.addr, sz, memblock);
     }
   //  pthread_mutex_init(&mprotect_mutex[udom_id], NULL);
    // pkey_set_real(make_pkru(udom_id, PKEY_DISABLE_ACCESS), udom_id);
@@ -538,7 +543,7 @@ void udom_free(void* data){
     free_list->next = NULL;
 
     /* Insert the block into free list head */
-    udom_free_list_insert_to_head(header.memdom_id, free_list);   
+     ufree_list_insert_to_head(header.memdom_id, free_list);   
 
    // pthread_mutex_unlock(&udom[udom_id]->mlock);
 }

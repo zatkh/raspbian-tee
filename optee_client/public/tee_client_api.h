@@ -299,6 +299,7 @@ typedef struct {
 	void *shadow_buffer;
 	int registered_fd;
 	bool buffer_allocated;
+	int udom;
 } TEEC_SharedMemory;
 
 /**
@@ -557,6 +558,7 @@ typedef struct {
 	//uint32_t session_id;
 } difc_session;
 
+
 TEEC_Result difc_create_enclave(TEEC_Context *context,
 			     TEEC_Session *session,
 			     const TEEC_UUID *destination,
@@ -574,8 +576,8 @@ TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
 						    int fd);
 
 TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm);
-TEEC_Result teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm);
-void teec_difc_free(TEEC_SharedMemory *shm);
+void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz);
+void teec_difc_free(void *data);
 						
 #endif
 

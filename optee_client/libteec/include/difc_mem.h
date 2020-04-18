@@ -6,7 +6,10 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <sys/mman.h>
-#include "memdom_lib.h"
+#include "mem_common.h"
+
+//#include "memdom_lib.h"
+
 
 
 
@@ -29,6 +32,13 @@ void* mem_start[3];
 pthread_mutex_t mprotect_mutex[3];
 extern struct udom_metadata_struct *udom[MAX_MEMDOM];
 
+
+//#define UDOM_INTERCEPT_MALLOC
+#ifdef UDOM_INTERCEPT_MALLOC
+#define malloc(sz) udom_alloc(udom_private_id(), sz)
+#define calloc(a,b) udom_alloc(udom_private_id(), a*b)
+#define free(addr) udom_free(addr)
+#endif
 
 
 /* Create a memory domain and return it to user */
@@ -56,5 +66,5 @@ int udom_private_id(void);
 /*Set protection on a udom */
 int udom_mprotect(unsigned long udom_id, void *addr, unsigned long len, unsigned long orig_prot);
 
-void udom_free_list_init(int udom_id);
+void ufree_list_init(int udom_id);
 

@@ -17,6 +17,8 @@
 #include <linux/miscdevice.h>
 
 #include <azure-sphere/security.h>
+#include <azure-sphere/difc.h>
+
 
 #include <asm/syscall.h>
 #include <linux/compat.h>
@@ -72,7 +74,7 @@ asmlinkage long sys_udom_alloc(unsigned long flags, unsigned long init_val)
 	__asm__ __volatile__(
             "mrc p15, 0, %[result], c3, c0, 0\n"
             : [result] "=r" (dacr) : );
-    printk("allocated udom:%d, dacr=0x%lx\n",udom, dacr);
+    difc_lsm_debug("allocated udom:%d, dacr=0x%lx\n",udom, dacr);
 
 out:
 	up_write(&current->mm->mmap_sem);
@@ -94,13 +96,13 @@ asmlinkage int sys_udom_free(unsigned long udom)
 
 	int udom_client_acc= udom_get(DOMAIN_KERNEL);
 	if(udom_client_acc==DOMAIN_CLIENT)
-	    printk("client udom acc:%d\n",udom_client_acc);
+	    difc_lsm_debug("client udom acc:%d\n",udom_client_acc);
 
 
 	__asm__ __volatile__(
             "mrc p15, 0, %[result], c3, c0, 0\n"
             : [result] "=r" (dacr) : );
-    printk("allocated udom:%d, dacr=0x%lx\n",udom, dacr);
+    difc_lsm_debug("allocated udom:%d, dacr=0x%lx\n",udom, dacr);
 
 out:
 	up_write(&current->mm->mmap_sem);
@@ -189,7 +191,7 @@ SYSCALL_DEFINE3(udom_munmap, unsigned long, addr, size_t, len, int, id)
   //if(udom_arr[mn->udom] != -1)
   udom_arr[mn->udom] = -1;
   mn->udom = -1;
-  //printk("udom_munmap\n");
+  //difc_lsm_debug("udom_munmap\n");
   return sys_munmap(addr, len);
 }
 
@@ -200,7 +202,7 @@ SYSCALL_DEFINE5(udom_mmap_cache, unsigned long, addr, unsigned long, len,
   long raddr = sys_mmap_pgoff(addr, len, prot, flags, -1, 0);
   mpt_node mn = {.buf = (void*)raddr, .len = len, .prot = prot, .udom = -1, .next = NULL, .id = id};
   hash_put(id, &mn);
-  //printk("udom_mmap\n");
+  //difc_lsm_debug("udom_mmap\n");
   return raddr;
 }
 
@@ -211,7 +213,7 @@ SYSCALL_DEFINE5(udom_mprotect_set, unsigned long, start, unsigned long, len,
   mpt_node *mn = hash_get(id);
   mn->udom = udom;
   mn->prot = prot;
-  //printk("udom_mprotect_set\n");
+  //difc_lsm_debug("udom_mprotect_set\n");
   return sys_udom_mprotect(start, len, prot, udom);
 }
 
@@ -220,7 +222,7 @@ SYSCALL_DEFINE5(udom_mprotect_evict, unsigned long, start, unsigned long, len,
     int, id) {
   mpt_node *mn = hash_get(id);
   mn->udom = -1;
-  //printk("udom_mprotect_evict\n");
+  //difc_lsm_debug("udom_mprotect_evict\n");
   return sys_udom_mprotect(start, len, prot, udom);
 }
 SYSCALL_DEFINE4(mprotect_exec, unsigned long, start, unsigned long, len,
@@ -243,7 +245,7 @@ SYSCALL_DEFINE4(mprotect_exec, unsigned long, start, unsigned long, len,
     prev = cur;
     cur = cur->next;
   }
-  //printk("mprotect_exec\n");
+  //difc_lsm_debug("mprotect_exec\n");
   return sys_udom_mprotect(start, len, prot, -1);
 }
 
@@ -279,7 +281,7 @@ SYSCALL_DEFINE5(udom_mprotect_exec, unsigned long, start, unsigned long, len,
   udom_arr[udom] = id;
   mn->udom = udom;
   mn->prot = prot;
-  //printk("udom_mprotect_exec\n");
+  //difc_lsm_debug("udom_mprotect_exec\n");
   return sys_udom_mprotect(start, len, prot, udom);
 }
 
@@ -303,7 +305,7 @@ SYSCALL_DEFINE5(udom_mprotect_grouping, unsigned long, start, unsigned long, len
   }
   mn->udom = grouping_key;
 
-  //printk("udom_mprotect_grouping\n");
+  //difc_lsm_debug("udom_mprotect_grouping\n");
   return sys_udom_mprotect(start, len, prot, grouping_key);
 }
 
@@ -322,7 +324,7 @@ void alloc_hash(void) {
    
 mpt_node* hash_get(int key) {
 	int hash = (key % TABLE_SIZE);
-  //printk("key : %d, %d\n", mmap_table[hash].key, key);
+  //difc_lsm_debug("key : %d, %d\n", mmap_table[hash].key, key);
 	while (mmap_table[hash].key != -1 && mmap_table[hash].key != key)
 		hash = (hash + 1) % TABLE_SIZE;
 	if (mmap_table[hash].key == -1)
