@@ -1077,6 +1077,27 @@ void enclave_shm_cleanup(TEEC_SharedMemory *shm)
 	shm->buffer_allocated = false;
 }
 
+void enclave_shm_mprotect(TEEC_SharedMemory *shm, unsigned long orig_prot)
+{
+	if (!shm || shm->id == -1)
+		return;
+
+#ifdef SW_UDOM_ENABLE
+	if( memdom_priv_add(shm->udom,1,orig_prot)!=0){
+		printf("enclave_shm_cleanup failed\n");
+	}
+#else
+
+	if(udom_mprotect(shm->udom, shm->buffer, shm->size,orig_prot)!=0){
+		printf("enclave_shm_mprotext failed\n");
+	}
+	
+#endif
+
+
+
+}
+
 void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz)
 {
 	char *memblock = NULL;

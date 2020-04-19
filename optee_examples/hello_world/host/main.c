@@ -28,6 +28,9 @@
 #include <err.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -56,7 +59,7 @@ static TEEC_Result AllocateSharedMemory(TEEC_Context *ctx,
 	return TEEC_AllocateSharedMemory(ctx, shm);
 }
 
-int main(void)
+int malloc_test(int itter, int memblk_len)
 {
 	TEEC_Result res;
 	TEEC_Context ctx;
@@ -66,12 +69,12 @@ int main(void)
 	static TEEC_SharedMemory shm1;
 	static TEEC_SharedMemory shm2;
 	size_t shm_len = 1024 * 1024;
-	size_t membloc_len=0;
 
 	uint32_t err_origin;
 	char * memblk=NULL;
 	  struct timespec start,end;
-    long sub=0,sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+    long sub=0;
+	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
 	
 
 	/* Initialize a context connecting us to the TEE */
@@ -98,27 +101,19 @@ int main(void)
 	shm1.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
 	shm2.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;	
 	shm1.size=shm_len;
-	shm2.size=shm_len;
-	membloc_len=32;
+	shm2.size=memblk_len;
 
 
-/************teec****************/
-//clock_gettime(CLOCK_MONOTONIC_RAW,&start);
-//	res=TEEC_RegisterSharedMemory(&ctx, &shm2);
-//clock_gettime(CLOCK_MONOTONIC_RAW,&end);
 
-//	if (res != TEEC_SUCCESS)
-//		errx(1, "TEEC_AllocateSharedMemory failed with code 0x%x origin 0x%x",
-//			res, err_origin);
-
-	shm2.size=membloc_len;
+for(int i=0;i<itter;i++)
+{
+	ctx.reg_mem=false;	
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	res=TEEC_AllocateSharedMemory(&ctx, &shm2);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
 sub = ( end.tv_nsec )-(start.tv_nsec );
 printf("TEEC_AllocateSharedMemory: %ld\n",sub);
 sum1 +=sub;
-
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_AllocateSharedMemory failed with code 0x%x origin 0x%x",
 			res, err_origin);
@@ -129,18 +124,22 @@ clock_gettime(CLOCK_MONOTONIC_RAW,&end);
 sub = ( end.tv_nsec )-(start.tv_nsec );
 printf("TEEC_ReleaseSharedMemory: %ld\n",sub);
 sum2 +=sub;
-
+}
 /************ustar****************/
-	res=teec_difc_udom_create(&ctx, &shm1);
+
+
+
+res=teec_difc_udom_create(&ctx, &shm1);
 
 	if (res != TEEC_SUCCESS)
 		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
 			res, err_origin);
 
+for(int i=0;i<itter;i++)
 
-
+{
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
-	memblk= (char*)teec_difc_alloc(&ctx, &shm1,membloc_len);
+	memblk= (char*)teec_difc_alloc(&ctx, &shm1,memblk_len);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
 sub = ( end.tv_nsec )-(start.tv_nsec );
 printf("udom_test malloc: %ld\n",sub);
@@ -157,7 +156,11 @@ sub = ( end.tv_nsec )-(start.tv_nsec );
 printf("udom_test free: %ld\n",sub);
 sum4 +=sub;
 
+}
+enclave_shm_cleanup(&shm1);
 
+printf("shm_malloc avg1 (%lld) , shm_free avg2 (%lld)  itter :%d time\n",(sum1/itter),(sum2/itter),itter);
+printf("udom_malloc avg1 (%lld) , udom_free avg2 (%lld)  itter :%d time\n",(sum3/itter),(sum4/itter),itter);
 
 	/*
 	 * Execute a function in the TA by invoking it, in this case
@@ -203,4 +206,241 @@ sum4 +=sub;
 	TEEC_FinalizeContext(&ctx);
 
 	return 0;
+}
+
+
+
+int mmap_test(int itter)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_HELLO_WORLD_UUID;
+	static TEEC_SharedMemory shm1;
+	static TEEC_SharedMemory shm2;
+	size_t shm_len = 1024 * 1024;
+
+	uint32_t err_origin;
+	char * memblk=NULL;
+	  struct timespec start,end;
+    long sub=0;
+	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+	
+
+	/* Initialize a context connecting us to the TEE */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*
+	 * Open a session to the "hello world" TA, the TA will print "hello
+	 * world!" in the log when the session is created.
+	 */
+	res = TEEC_OpenSession(&ctx, &sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+
+
+	
+	memset(&shm1, 0, sizeof(shm1));
+	memset(&shm2, 0, sizeof(shm2));	
+
+	shm1.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+	shm2.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;	
+	shm1.size=shm_len;
+	shm2.size=shm_len;
+	ctx.reg_mem=false;
+
+
+
+
+for(int i=0;i<itter;i++)
+
+{
+	
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+	res=TEEC_RegisterSharedMemory(&ctx, &shm2);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("TEEC_RegisterSharedMemory: %ld\n",sub);
+sum1 +=sub;
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_RegisterSharedMemory failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+	TEEC_ReleaseSharedMemory(&shm2);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("TEEC_ReleaseSharedMemory: %ld\n",sub);
+sum2 +=sub;
+ctx.reg_mem=false;
+
+/************ustar****************/
+}
+
+
+
+for(int i=0;i<itter;i++)
+
+{
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+
+	res=teec_difc_udom_create(&ctx, &shm1);
+
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("teec_difc_udom_create: udom: %d %ld\n",shm1.udom,sub);
+sum3 +=sub;
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+  	enclave_shm_cleanup(&shm1);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("enclave_shm_cleanup: %ld\n",sub);
+sum4 +=sub;
+
+
+}
+printf("shm_mmap avg1 (%lld) , shm_munmap avg2 (%lld)  itter :%d time\n",(sum1/itter),(sum2/itter),itter);
+printf("udom_mmap avg1 (%lld) , udom_munmap avg2 (%lld)  itter :%d time\n",(sum3/itter),(sum4/itter),itter);
+
+
+	TEEC_CloseSession(&sess);
+
+	TEEC_FinalizeContext(&ctx);
+
+	return 0;
+}
+
+
+
+
+int mprot_test(int itter)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_HELLO_WORLD_UUID;
+	static TEEC_SharedMemory shm1;
+	static TEEC_SharedMemory shm2;
+	size_t shm_len = 1024 * 1024;
+
+	uint32_t err_origin;
+	char * memblk=NULL;
+	  struct timespec start,end;
+    long sub=0;
+	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+	
+
+	/* Initialize a context connecting us to the TEE */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*
+	 * Open a session to the "hello world" TA, the TA will print "hello
+	 * world!" in the log when the session is created.
+	 */
+	res = TEEC_OpenSession(&ctx, &sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+
+
+	
+	memset(&shm1, 0, sizeof(shm1));
+	memset(&shm2, 0, sizeof(shm2));	
+
+	shm1.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+	shm2.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;	
+	shm1.size=shm_len;
+	shm2.size=shm_len;
+	ctx.reg_mem=false;
+
+
+res=TEEC_RegisterSharedMemory(&ctx, &shm2);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_RegisterSharedMemory failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+for(int i=0;i<itter;i++)
+
+{
+	
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+mprotect(shm2.buffer,shm2.size,PROT_NONE);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("mprotect: %ld\n",sub);
+sum1 +=sub;
+
+/************ustar****************/
+}
+
+TEEC_ReleaseSharedMemory(&shm2);
+
+res=teec_difc_udom_create(&ctx, &shm1);
+if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+for(int i=0;i<itter;i++)
+
+{
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+	
+enclave_shm_mprotect(&shm1,PROT_NONE);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = ( end.tv_nsec )-(start.tv_nsec );
+printf("enclave_shm_mprotext: udom: %d %ld\n",shm1.udom,sub);
+sum2 +=sub;
+
+}
+
+enclave_shm_cleanup(&shm1);
+
+printf("mprot avg1 (%lld)   itter :%d time\n",(sum1/itter),itter);
+printf("udom_mpro avg1 (%lld) itter :%d time\n",(sum2/itter),itter);
+
+
+
+	TEEC_CloseSession(&sess);
+
+	TEEC_FinalizeContext(&ctx);
+
+	return 0;
+}
+
+int main(int argc, char *argv[])
+{
+     if (argc >= 3) 
+	 {
+            if (strcmp(argv[1], "-alloc") == 0) {
+				printf("shm_malloc test with itter:%d, blk_size: %d\n",atoi(argv[2]),atoi(argv[3]));
+            	malloc_test(atoi(argv[2]),atoi(argv[3]));
+           }else if (strcmp(argv[1], "-umap") == 0) {
+				printf("shm_maptest with itter: %d\n",atoi(argv[2]));
+				mmap_test(atoi(argv[2]));
+		   } else if (strcmp(argv[1], "-mprot") == 0) {
+				printf("shm_mprot with itter: %d\n",atoi(argv[2]));
+          		mprot_test(atoi(argv[2]));
+        } 
+
+	
+	
+	}
+
 }
