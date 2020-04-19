@@ -1047,9 +1047,34 @@ TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm)
 	ufree_list_init(memdom_id);
 
 #endif
+ctx->reg_mem=true;
+
 
 	return TEEC_RegisterSharedMemory(ctx,shm);
 
+}
+
+void enclave_shm_cleanup(TEEC_SharedMemory *shm)
+{
+	if (!shm || shm->id == -1)
+		return;
+
+#ifdef SW_UDOM_ENABLE
+	if(memdom_kill(shm->udom)!=0){
+		printf("enclave_shm_cleanup failed\n");
+	}
+#else
+
+	if(udom_kill(shm->udom)!=0){
+		printf("enclave_shm_cleanup failed\n");
+	}
+	
+#endif
+	shm->id = -1;
+	shm->shadow_buffer = NULL;
+	shm->buffer = NULL;
+	shm->registered_fd = -1;
+	shm->buffer_allocated = false;
 }
 
 void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz)

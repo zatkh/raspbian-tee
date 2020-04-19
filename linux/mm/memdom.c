@@ -5,6 +5,9 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 
+#include <azure-sphere/difc.h>
+
+
 /* SLAB cache for smv_struct structure  */
 static struct kmem_cache *memdom_cachep;
 
@@ -17,9 +20,9 @@ void memdom_init(void){
                                       sizeof(struct memdom_struct), 0,
                                       SLAB_HWCACHE_ALIGN, NULL);
     if( !memdom_cachep ) {
-        printk(KERN_INFO "[%s] memdom slabs initialization failed...\n", __func__);
+       difc_lsm_debug("[%s] memdom slabs initialization failed...\n", __func__);
     } else{
-        printk(KERN_INFO "[%s] memdom slabs initialized\n", __func__);
+       difc_lsm_debug("[%s] memdom slabs initialized\n", __func__);
     }
 }
 
@@ -61,12 +64,12 @@ int memdom_create(void){
     /* Increase total number of memdom count in mm_struct */
     atomic_inc(&mm->num_memdoms);
 
-    printk(KERN_INFO "Created new memdom with ID %d, #memdom: %d / %d\n", 
+   difc_lsm_debug("Created new memdom with ID %d, #memdom: %d / %d\n", 
             memdom_id, atomic_read(&mm->num_memdoms), SMV_ARRAY_SIZE);
     goto out;
 
 err:
-    printk(KERN_ERR "Too many memdoms, cannot create more.\n");
+    difc_lsm_debug("Too many memdoms, cannot create more.\n");
     memdom_id = -1;
 out:
     mutex_unlock(&mm->smv_metadataMutex);
@@ -112,7 +115,7 @@ int memdom_kill(int memdom_id, struct mm_struct *mm){
     int smv_id = 0;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
         return -1;
     }
 
@@ -133,7 +136,7 @@ int memdom_kill(int memdom_id, struct mm_struct *mm){
         clear_bit(memdom_id, mm->memdom_bitmapInUse);  
         mutex_unlock(&mm->smv_metadataMutex);
     } else {
-        printk(KERN_ERR "Error, trying to delete a memdom that does not exist: memdom %d, #memdoms: %d\n", memdom_id, atomic_read(&mm->num_memdoms));
+        difc_lsm_debug("Error, trying to delete a memdom that does not exist: memdom %d, #memdoms: %d\n", memdom_id, atomic_read(&mm->num_memdoms));
         mutex_unlock(&mm->smv_metadataMutex);
         return -1;
     }
@@ -179,7 +182,7 @@ int memdom_priv_add(int memdom_id, int smv_id, int privs){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
         return -1;
     }
 
@@ -189,11 +192,11 @@ int memdom_priv_add(int memdom_id, int smv_id, int privs){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        difc_lsm_debug("[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
         return -1;
     }       
     if( !smv_is_in_memdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
         return -1;  
     }
     
@@ -230,7 +233,7 @@ int memdom_priv_del(int memdom_id, int smv_id, int privs){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
         return -1;
     }
 
@@ -240,11 +243,11 @@ int memdom_priv_del(int memdom_id, int smv_id, int privs){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        difc_lsm_debug("[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
         return -1;
     }       
     if( !smv_is_in_memdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
         return -1;  
     }
     
@@ -282,7 +285,7 @@ int memdom_priv_get(int memdom_id, int smv_id){
     int privs = 0;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
         return -1;
     }
 
@@ -292,11 +295,11 @@ int memdom_priv_get(int memdom_id, int smv_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        difc_lsm_debug("[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
         return -1;
     }       
     if( !smv_is_in_memdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        difc_lsm_debug("[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
         return -1;  
     }
     
@@ -329,7 +332,7 @@ int memdom_mmap_register(int memdom_id){
     struct mm_struct *mm = current->mm;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
         return -1;
     }
 
@@ -338,7 +341,7 @@ int memdom_mmap_register(int memdom_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom ) {
-        printk(KERN_ERR "[%s] memdom %p not found\n", __func__, memdom);
+        difc_lsm_debug("[%s] memdom %p not found\n", __func__, memdom);
         return -1;
     }       
     
@@ -370,7 +373,7 @@ int memdom_claim_all_vmas(int memdom_id){
     int vma_count = 0;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        difc_lsm_debug("[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
         return -1;
     }
     
@@ -395,7 +398,7 @@ int memdom_query_id(unsigned long addr){
     vma = find_vma(current->mm, addr);
     if( !vma ) {
         /* Debugging info, should remove printk to avoid information leakage and just go to out label. */
-        printk(KERN_INFO "[%s] addr 0x%16lx is not in any memdom\n", __func__, addr);
+       difc_lsm_debug("[%s] addr 0x%16lx is not in any memdom\n", __func__, addr);
         goto out;    
     }
 
@@ -403,10 +406,10 @@ int memdom_query_id(unsigned long addr){
     smv_id = current->smv_id;
     memdom_id = vma->memdom_id;
     if( smv_is_in_memdom(memdom_id, smv_id) ) {
-        printk(KERN_INFO "[%s] addr 0x%16lx is in memdom %d\n", __func__, addr, memdom_id);        
+       difc_lsm_debug("[%s] addr 0x%16lx is in memdom %d\n", __func__, addr, memdom_id);        
     } else {
         /* Debugging info, should remove to avoid information leakage, just set memdom_id to 0 (lying to the caller)*/
-        printk(KERN_ERR "[%s] hey you don't have the privilege to query this address (smv %d, memdom %d)\n", 
+        difc_lsm_debug("[%s] hey you don't have the privilege to query this address (smv %d, memdom %d)\n", 
                __func__, smv_id, memdom_id);
         memdom_id = 0;        
     }
