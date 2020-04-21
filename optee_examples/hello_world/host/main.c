@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
+#include <inttypes.h>
 
 /* OP-TEE TEE client API (built by optee_client) */
 #include <tee_client_api.h>
@@ -73,8 +74,10 @@ int malloc_test(int itter, int memblk_len)
 	uint32_t err_origin;
 	char * memblk=NULL;
 	  struct timespec start,end;
-    long sub=0;
-	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+	 int it1=0,it2=0,it3=0,it4=0;
+
+    long long sub=0;
+	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0;
 	
 
 	/* Initialize a context connecting us to the TEE */
@@ -111,9 +114,12 @@ for(int i=0;i<itter;i++)
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	res=TEEC_AllocateSharedMemory(&ctx, &shm2);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("TEEC_AllocateSharedMemory: %ld\n",sub);
-sum1 +=sub;
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it1++;
+printf("TEEC_AllocateSharedMemory: %lld\n",sub);
+sum1 +=sub;}
+
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_AllocateSharedMemory failed with code 0x%x origin 0x%x",
 			res, err_origin);
@@ -121,18 +127,27 @@ sum1 +=sub;
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	TEEC_ReleaseSharedMemory(&shm2);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("TEEC_ReleaseSharedMemory: %ld\n",sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+it2++;
+printf("TEEC_ReleaseSharedMemory: %lld\n",sub);
 sum2 +=sub;
+}
 }
 /************ustar****************/
 
 
 
-res=teec_difc_udom_create(&ctx, &shm1);
+res=teec_difc_udom_create( &shm1);
 
 	if (res != TEEC_SUCCESS)
 		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+res=teec_difc_udom_mmap(&ctx, &shm1);
+
+if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_mmap failed with code 0x%x origin 0x%x",
 			res, err_origin);
 
 for(int i=0;i<itter;i++)
@@ -141,9 +156,12 @@ for(int i=0;i<itter;i++)
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	memblk= (char*)teec_difc_alloc(&ctx, &shm1,memblk_len);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("udom_test malloc: %ld\n",sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it3++;
+printf("udom_test malloc: %lld\n",sub);
 sum3 +=sub;
+}
 
 	if (memblk == NULL)
 		errx(1, "teec_difc_malloc failed with code 0x%x origin 0x%x",
@@ -152,15 +170,19 @@ sum3 +=sub;
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
   	teec_difc_free(memblk);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("udom_test free: %ld\n",sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it4++;
+printf("udom_test free: %lld\n",sub);
 sum4 +=sub;
+}
 
 }
 enclave_shm_cleanup(&shm1);
+TEEC_ReleaseSharedMemory(&shm1);
 
-printf("shm_malloc avg1 (%lld) , shm_free avg2 (%lld)  itter :%d time\n",(sum1/itter),(sum2/itter),itter);
-printf("udom_malloc avg1 (%lld) , udom_free avg2 (%lld)  itter :%d time\n",(sum3/itter),(sum4/itter),itter);
+printf("shm_malloc avg1 (%lld) , shm_free avg2 (%lld)  itter :%d time\n",(sum1/it1),(sum2/it2),itter);
+printf("udom_malloc avg1 (%lld) , udom_free avg2 (%lld)  itter :%d time\n",(sum3/it3),(sum4/it4),itter);
 
 	/*
 	 * Execute a function in the TA by invoking it, in this case
@@ -224,8 +246,10 @@ int mmap_test(int itter)
 	uint32_t err_origin;
 	char * memblk=NULL;
 	  struct timespec start,end;
-    long sub=0;
+    long long sub=0;
 	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+		 int it1=0,it2=0,it3=0,it4=0;
+
 	
 
 	/* Initialize a context connecting us to the TEE */
@@ -265,9 +289,12 @@ for(int i=0;i<itter;i++)
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	res=TEEC_RegisterSharedMemory(&ctx, &shm2);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("TEEC_RegisterSharedMemory: %ld\n",sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it1++;
+printf("TEEC_RegisterSharedMemory: %lld\n",sub);
 sum1 +=sub;
+}
 
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_RegisterSharedMemory failed with code 0x%x origin 0x%x",
@@ -276,9 +303,12 @@ sum1 +=sub;
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	TEEC_ReleaseSharedMemory(&shm2);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("TEEC_ReleaseSharedMemory: %ld\n",sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it2++;
+printf("TEEC_ReleaseSharedMemory: %lld\n",sub);
 sum2 +=sub;
+}
 ctx.reg_mem=false;
 
 /************ustar****************/
@@ -286,33 +316,52 @@ ctx.reg_mem=false;
 
 
 
-for(int i=0;i<itter;i++)
 
-{
-clock_gettime(CLOCK_MONOTONIC_RAW,&start);
-
-	res=teec_difc_udom_create(&ctx, &shm1);
-
-clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("teec_difc_udom_create: udom: %d %ld\n",shm1.udom,sub);
-sum3 +=sub;
+res=teec_difc_udom_create( &shm1);
 
 	if (res != TEEC_SUCCESS)
 		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
 			res, err_origin);
 
+
+for(int i=0;i<itter;i++)
+
+{
+	
+
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
-  	enclave_shm_cleanup(&shm1);
+
+	res=teec_difc_udom_mmap(&ctx, &shm1);
+
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("enclave_shm_cleanup: %ld\n",sub);
-sum4 +=sub;
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it3++;
+printf("teec_difc_udom_mmap: udom: %d %lld\n",shm1.udom,sub);
+sum3 +=sub;}
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_mmap failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+
+
+clock_gettime(CLOCK_MONOTONIC_RAW,&start);
+  	TEEC_ReleaseSharedMemory(&shm1);
+clock_gettime(CLOCK_MONOTONIC_RAW,&end);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it4++;
+printf("enclave_shm_cleanup: %lld\n",sub);
+sum4 +=sub;}
+
 
 
 }
-printf("shm_mmap avg1 (%lld) , shm_munmap avg2 (%lld)  itter :%d time\n",(sum1/itter),(sum2/itter),itter);
-printf("udom_mmap avg1 (%lld) , udom_munmap avg2 (%lld)  itter :%d time\n",(sum3/itter),(sum4/itter),itter);
+
+enclave_shm_cleanup(&shm1);
+printf("shm_mmap avg1 (%lld) , shm_munmap avg2 (%lld)  itter :%d time\n",(sum1/it1),(sum2/it2),itter);
+printf("udom_mmap avg1 (%lld) , udom_munmap avg2 (%lld)  itter :%d time\n",(sum3/it3),(sum4/it4),itter);
 
 
 	TEEC_CloseSession(&sess);
@@ -339,8 +388,10 @@ int mprot_test(int itter)
 	uint32_t err_origin;
 	char * memblk=NULL;
 	  struct timespec start,end;
-    long sub=0;
+    long long sub=0;
 	long long sum1=0,avg1=0,sum2=0,avg2=0,sum3=0,sum4=0,sum5=0;
+		 int it1=0,it2=0;
+
 	
 
 	/* Initialize a context connecting us to the TEE */
@@ -383,18 +434,26 @@ for(int i=0;i<itter;i++)
 clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 mprotect(shm2.buffer,shm2.size,PROT_NONE);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("mprotect: %ld\n",sub);
-sum1 +=sub;
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0){
+	it1++;
+printf("mprotect: %lld\n",sub);
+sum1 +=sub;}
 
 /************ustar****************/
 }
 
 TEEC_ReleaseSharedMemory(&shm2);
 
-res=teec_difc_udom_create(&ctx, &shm1);
+res=teec_difc_udom_create( &shm1);
 if (res != TEEC_SUCCESS)
 		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+res=teec_difc_udom_mmap(&ctx, &shm1);
+
+if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_mmap failed with code 0x%x origin 0x%x",
 			res, err_origin);
 
 for(int i=0;i<itter;i++)
@@ -404,16 +463,22 @@ clock_gettime(CLOCK_MONOTONIC_RAW,&start);
 	
 enclave_shm_mprotect(&shm1,PROT_NONE);
 clock_gettime(CLOCK_MONOTONIC_RAW,&end);
-sub = ( end.tv_nsec )-(start.tv_nsec );
-printf("enclave_shm_mprotext: udom: %d %ld\n",shm1.udom,sub);
+sub = (( end.tv_nsec )-(start.tv_nsec ));
+if(sub >0)
+{
+	it2++;
+	printf("enclave_shm_mprotext: udom: %d %lld\n",shm1.udom,sub);
 sum2 +=sub;
+}
 
 }
 
 enclave_shm_cleanup(&shm1);
+  	TEEC_ReleaseSharedMemory(&shm1);
 
-printf("mprot avg1 (%lld)   itter :%d time\n",(sum1/itter),itter);
-printf("udom_mpro avg1 (%lld) itter :%d time\n",(sum2/itter),itter);
+
+printf("mprot avg1 (%lld)   itter :%d time\n",(sum1/it1),itter);
+printf("udom_mpro avg1 (%lld) itter :%d time\n",(sum2/it2),itter);
 
 
 

@@ -68,7 +68,7 @@
 
 /* Below ARM-TF */
 #define TEE_SHMEM_START		(0x08000000)
-#define TEE_SHMEM_SIZE		(4 * 1024 * 1024)
+#define TEE_SHMEM_SIZE		(10 * 1024 * 1024)
 
 #define TZDRAM_BASE		(0x10100000)
 #define TZDRAM_SIZE		(15 * 1024 * 1024)

@@ -648,10 +648,11 @@ void TEEC_RequestCancellation(TEEC_Operation *operation)
 		EMSG("TEE_IOC_CANCEL: %s", strerror(errno));
 }
 
+
 TEEC_Result TEEC_RegisterSharedMemory(TEEC_Context *ctx, TEEC_SharedMemory *shm)
 {
-	int fd;
-	size_t s;
+	int fd = 0;
+	size_t s = 0;
 
 	if (!ctx || !shm)
 		return TEEC_ERROR_BAD_PARAMETERS;
@@ -663,11 +664,14 @@ TEEC_Result TEEC_RegisterSharedMemory(TEEC_Context *ctx, TEEC_SharedMemory *shm)
 	if (!s)
 		s = 8;
 	if (ctx->reg_mem) {
+		//printf("ctx->reg_mem\n");
 		fd = teec_shm_register(ctx->fd, shm->buffer, s, &shm->id);
 		if (fd < 0)
 			return TEEC_ERROR_OUT_OF_MEMORY;
 		shm->registered_fd = fd;
 		shm->shadow_buffer = NULL;
+		//printf(" hey shm->buffer mmaped at %p\n",  shm->buffer);
+
 	} else {
 		fd = teec_shm_alloc(ctx->fd, s, &shm->id);
 		if (fd < 0)
@@ -681,6 +685,8 @@ TEEC_Result TEEC_RegisterSharedMemory(TEEC_Context *ctx, TEEC_SharedMemory *shm)
 			return TEEC_ERROR_OUT_OF_MEMORY;
 		}
 		shm->registered_fd = -1;
+		//printf("hey shm_shadowbuffer mmaped at %p\n", shm->shadow_buffer);
+
 	}
 
 	shm->alloced_size = s;
@@ -989,7 +995,8 @@ TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
 	return TEEC_SUCCESS;
 }
 
-TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm)
+
+TEEC_Result teec_difc_udom_create (TEEC_SharedMemory *shm)
 
 {
 	int memdom_id=0;
@@ -1007,22 +1014,13 @@ TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm)
 
     if(memdom_id == -1){
     	fprintf(stderr, "failed to create thread local memdom for smv %d\n", smv_id);
-    	return -1;
+    	return TEEC_ERROR_GENERIC;
   	}
 
   	smv_join_domain(memdom_id, smv_id);
   	memdom_priv_add(memdom_id, smv_id, MEMDOM_READ | MEMDOM_WRITE | MEMDOM_ALLOCATE | MEMDOM_EXECUTE);
     
-
-  	shm->buffer = (void*)memdom_mmap(memdom_id, 0, shm->size, PROT_READ | PROT_WRITE,
-                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_MEMDOM, 0, 0);
-  	if(shm->buffer == MAP_FAILED){
-    	perror("mmap for thread stack: ");
-    	return -1;
-  	}
-
 	  shm->udom=memdom_id;
-	  free_list_init( memdom_id);
 
 	 //  smv_join_domain(memdom_id, 0);
    // memdom_priv_add(memdom_id, 0, MEMDOM_READ | MEMDOM_WRITE);
@@ -1032,32 +1030,84 @@ TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm)
 #else
 
     memdom_id = udom_create();
-       
-    void* addr= NULL;//(void*)0x100000;
+  
+    if(memdom_id <= 0){
+    	fprintf(stderr, "failed to create thread local memdom \n");
+    	return TEEC_ERROR_GENERIC;
+  	}
+
+
+	shm->udom=memdom_id;
+
+#endif
+
+
+	return TEEC_SUCCESS;
+
+}
+
+
+TEEC_Result teec_difc_udom_mmap (TEEC_Context *ctx,TEEC_SharedMemory *shm)
+
+{
+
+#ifdef SW_UDOM_ENABLE
+ 
+
+  	shm->buffer = (void*)memdom_mmap(shm->udom, 0, shm->size, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_MEMDOM, 0, 0);
+
+	//printf("[teec_difc_udom_mmap] shm->buffer mmaped at %p\n",  shm->buffer);
+
+  	if(shm->buffer == MAP_FAILED){
+    	perror("mmap for thread stack: ");
+    	return TEEC_ERROR_GENERIC;
+  	}
+
+	  free_list_init( shm->udom);
+
+	 //  smv_join_domain(memdom_id, 0);
+   // memdom_priv_add(memdom_id, 0, MEMDOM_READ | MEMDOM_WRITE);
+
+#else
 
 // here we should check if prot is WO/RO/EO we should map to a predefined uTile instead of regular one
-     shm->buffer= udom_mmap(memdom_id,addr ,shm->size, 
+     shm->buffer= udom_mmap(shm->udom,NULL ,shm->size, 
                                 PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS , 0, 0);
 	if( shm->buffer == MAP_FAILED ) {
-   		 printf("Failed to udom_create using mmap for udom %d\n", memdom_id);
+   		 printf("Failed to udom_create using mmap for udom %d\n", shm->udom);
    		 shm->buffer = NULL;
 	}
 
-	shm->udom=memdom_id;
-	ufree_list_init(memdom_id);
+	ufree_list_init(shm->udom);
 
 #endif
-ctx->reg_mem=true;
 
-
+//ctx->reg_mem=true;
 	return TEEC_RegisterSharedMemory(ctx,shm);
 
 }
 
-void enclave_shm_cleanup(TEEC_SharedMemory *shm)
+void enclave_shm_mprotect(TEEC_SharedMemory *shm, unsigned long orig_prot)
 {
 	if (!shm || shm->id == -1)
 		return;
+
+#ifdef SW_UDOM_ENABLE
+	if( memdom_priv_add(shm->udom,1,orig_prot)!=0){
+		printf("enclave_shm_mprotect failed\n");
+	}
+#else
+
+	if(udom_mprotect(shm->udom, shm->buffer, shm->size,orig_prot)!=0){
+		printf("enclave_shm_mprotect failed\n");
+	}
+	
+#endif
+}
+
+void enclave_shm_cleanup(TEEC_SharedMemory *shm)
+{
 
 #ifdef SW_UDOM_ENABLE
 	if(memdom_kill(shm->udom)!=0){
@@ -1070,32 +1120,9 @@ void enclave_shm_cleanup(TEEC_SharedMemory *shm)
 	}
 	
 #endif
-	shm->id = -1;
-	shm->shadow_buffer = NULL;
-	shm->buffer = NULL;
-	shm->registered_fd = -1;
-	shm->buffer_allocated = false;
-}
+	shm->udom=-1;
 
-void enclave_shm_mprotect(TEEC_SharedMemory *shm, unsigned long orig_prot)
-{
-	if (!shm || shm->id == -1)
-		return;
-
-#ifdef SW_UDOM_ENABLE
-	if( memdom_priv_add(shm->udom,1,orig_prot)!=0){
-		printf("enclave_shm_cleanup failed\n");
-	}
-#else
-
-	if(udom_mprotect(shm->udom, shm->buffer, shm->size,orig_prot)!=0){
-		printf("enclave_shm_mprotext failed\n");
-	}
-	
-#endif
-
-
-
+	TEEC_ReleaseSharedMemory(shm);
 }
 
 void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz)

@@ -8,7 +8,7 @@
 #include <linux/sched.h>
 #include <azure-sphere/security.h>
 
-static int debug = 1;
+static int debug = 0;
 
 #define difc_lsm_debug(fmt, arg...)					\
 	do {							\

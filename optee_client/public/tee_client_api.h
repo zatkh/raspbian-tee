@@ -575,11 +575,12 @@ TEEC_Result teec_difc_register_shared_memory_fd(TEEC_Context *ctx,
 						    TEEC_SharedMemory *shm,
 						    int fd);
 
-TEEC_Result teec_difc_udom_create (TEEC_Context *ctx,TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_udom_create (TEEC_SharedMemory *shm);
+TEEC_Result teec_difc_udom_mmap (TEEC_Context *ctx,TEEC_SharedMemory *shm);
 void* teec_difc_alloc(TEEC_Context *ctx, TEEC_SharedMemory *shm,size_t sz);
 void teec_difc_free(void *data);
 void enclave_shm_cleanup(TEEC_SharedMemory *shm);	
-void enclave_shm_mprotect(TEEC_SharedMemory *shm, unsigned long orig_prot);					
+void enclave_shm_mprotect(TEEC_SharedMemory *shm, unsigned long orig_prot);				
 
 #endif
 

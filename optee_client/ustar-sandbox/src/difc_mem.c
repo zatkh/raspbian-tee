@@ -155,7 +155,7 @@ int udom_kill(int udom_id){
     while( free_list ) {
         struct free_list_struct *tmp = free_list;
         free_list = free_list->next;
-        rlog("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
+      //  rlog("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
 #ifdef UDOM_INTERCEPT_MALLOC
 #undef free
 #endif

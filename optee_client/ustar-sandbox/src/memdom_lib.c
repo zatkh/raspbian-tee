@@ -59,7 +59,7 @@ int memdom_kill(int memdom_id){
     while( free_list ) {
         struct free_list_struct *tmp = free_list;
         free_list = free_list->next;
-        printf("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
+        //printf("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
         free(tmp);
     }
 

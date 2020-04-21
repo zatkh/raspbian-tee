@@ -18,7 +18,7 @@
 
 #ifndef ENABLE_TEE_DIFC
 #define ENABLE_TEE_DIFC
-#define SW_UDOM_ENABLE
+//#define SW_UDOM_ENABLE
 //#define HW_UDOM_ENABLE
 #endif
 
