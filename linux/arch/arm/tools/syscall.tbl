@@ -435,6 +435,6 @@
 418 common udom_clone sys_udom_clone
 419 common mkdir_labeled sys_mkdir_labeled
 420 common create_labeled sys_create_labeled
-421 common set_labeled_file sys_set_labeled_file
+421 common difc_open sys_difc_open
 
 

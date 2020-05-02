@@ -31,6 +31,8 @@
 #include <linux/ima.h>
 #include <linux/dnotify.h>
 #include <linux/compat.h>
+#include <azure-sphere/difc.h>
+
 
 #include "internal.h"
 
@@ -932,11 +934,14 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 	int lookup_flags = 0;
 	int acc_mode = ACC_MODE(flags);
 
+
 	/*
 	 * Clear out all open flags we don't know about so that we don't report
 	 * them in fcntl(F_GETFD) or similar interfaces.
 	 */
 	flags &= VALID_OPEN_FLAGS;
+
+	op->ltype=NO_OP;
 
 	if (flags & (O_CREAT | __O_TMPFILE))
 		op->mode = (mode & S_IALLUGO) | S_IFREG;
@@ -1077,6 +1082,47 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	}
 	putname(tmp);
 	return fd;
+}
+
+long do_sys_difc_open(int dfd, const char __user *filename, int flags, umode_t mode,enum label_types label_mode)
+{
+	struct open_flags op;
+	int fd = build_open_flags(flags, mode, &op);
+	struct filename *tmp;
+
+	if(label_mode==SEC_LABEL)
+		{//difc_lsm_debug("difc_open\n");
+		op.ltype=label_mode;
+		}
+
+	if (fd)
+		return fd;
+
+	tmp = getname(filename);
+	if (IS_ERR(tmp))
+		return PTR_ERR(tmp);
+
+	fd = get_unused_fd_flags(flags);
+	if (fd >= 0) {
+		struct file *f = do_filp_open(dfd, tmp, &op);
+		if (IS_ERR(f)) {
+			put_unused_fd(fd);
+			fd = PTR_ERR(f);
+		} else {
+			fsnotify_open(f);
+			fd_install(fd, f);
+		}
+	}
+	putname(tmp);
+	return fd;
+}
+
+SYSCALL_DEFINE3(difc_open, const char __user *, filename, int, flags, enum label_types, label_mode)
+{
+	if (force_o_largefile())
+		flags |= O_LARGEFILE;
+
+	return do_sys_difc_open(AT_FDCWD, filename, flags, 0,label_mode);
 }
 
 SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t, mode)

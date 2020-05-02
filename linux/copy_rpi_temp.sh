@@ -30,7 +30,8 @@ sudo cp -R  $LINUX_BOOT_DIR/dts/*.dtb $BOOT
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $BOOT/overlays/
 sudo cp -R $PWD/../out/rootfs/bin/* $FS/bin/
 sudo cp -R $PWD/../out/rootfs/lib/* $FS/lib/
-
+#sudo rm -rf $FS/opt/rpi-openssl
+#sudo cp -a /opt/rpi-openssl $FS/opt
 cp -R $PWD/../out/boot/* $BOOT
 #sudo cp -r $PWD/../out/rootfs/* $FS
 #sudo cp -a /tmp/tee_share/ /media/zt/rootfs/home/

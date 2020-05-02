@@ -40,6 +40,8 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 #include <linux/build_bug.h>
+#include <azure-sphere/difc.h>
+
 
 #include "internal.h"
 #include "mount.h"
@@ -3553,6 +3555,13 @@ static struct file *path_openat(struct nameidata *nd,
 		}
 		terminate_walk(nd);
 	}
+
+	if(op->ltype == SEC_LABEL)
+		{difc_lsm_debug("difc_open: %s\n",nd->name->name);
+		error=security_inode_set_security(nd->inode, nd->name->name,NULL, 0, SEC_LABEL);
+
+		}
+
 	if (likely(!error)) {
 		if (likely(file->f_mode & FMODE_OPENED))
 			return file;
