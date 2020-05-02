@@ -104,6 +104,8 @@
 #ifdef CONFIG_SW_UDOM
 #include <linux/smv.h>
 #include <linux/memdom.h>
+#include <azure-sphere/difc.h>
+
 #endif
 
 #define CREATE_TRACE_POINTS
@@ -2211,7 +2213,7 @@ long _do_fork(unsigned long clone_flags,
 	 * requested, no event is reported; otherwise, report if the event
 	 * for the type of forking is enabled.
 	 */
-	if (!(clone_flags & CLONE_UNTRACED)) {
+	//if (!(clone_flags & CLONE_UNTRACED)) {
 		if (clone_flags & CLONE_VFORK)
 			trace = PTRACE_EVENT_VFORK;
 		else if ((clone_flags & CSIGNAL) != SIGCHLD)
@@ -2221,7 +2223,7 @@ long _do_fork(unsigned long clone_flags,
 
 		if (likely(!ptrace_event_enabled(current, trace)))
 			trace = 0;
-	}
+//	}
 
 	p = copy_process(clone_flags, stack_start, stack_size,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
@@ -2301,7 +2303,7 @@ void *lbl = security_copy_user_label(label);
 	 * requested, no event is reported; otherwise, report if the event
 	 * for the type of forking is enabled.
 	 */
-	if (!(clone_flags & CLONE_UNTRACED)) {
+//	if (!(clone_flags & CLONE_UNTRACED)) {
 		if (clone_flags & CLONE_VFORK)
 			trace = PTRACE_EVENT_VFORK;
 		else if ((clone_flags & CSIGNAL) != SIGCHLD)
@@ -2311,7 +2313,7 @@ void *lbl = security_copy_user_label(label);
 
 		if (likely(!ptrace_event_enabled(current, trace)))
 			trace = 0;
-	}
+//	}
 
 	p = copy_process(clone_flags, stack_start, stack_size,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
@@ -2374,8 +2376,9 @@ long do_fork(unsigned long clone_flags,
  */
 pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
-	return _do_fork(flags|CLONE_VM|CLONE_UNTRACED, (unsigned long)fn,
-		(unsigned long)arg, NULL, NULL, 0);
+		return _do_fork(flags|CLONE_VM, (unsigned long)fn,(unsigned long)arg, NULL, NULL, 0);
+
+	//return _do_fork(flags|CLONE_VM|CLONE_UNTRACED, (unsigned long)fn,(unsigned long)arg, NULL, NULL, 0);
 }
 
 #ifdef __ARCH_WANT_SYS_FORK

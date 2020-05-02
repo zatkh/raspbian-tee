@@ -59,7 +59,7 @@ int memdom_kill(int memdom_id){
     while( free_list ) {
         struct free_list_struct *tmp = free_list;
         free_list = free_list->next;
-       // printf("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
+        printf("freeing free_list addr: %p, size: 0x%lx bytes\n", tmp->addr, tmp->size);
         free(tmp);
     }
 
@@ -72,7 +72,7 @@ int memdom_kill(int memdom_id){
 		fprintf(stderr, "memdom_kill(%d) failed\n", memdom_id);
         return -1;
     }    
-    //rlog("Memdom ID %d killed\n", memdom_id);
+    rlog("Memdom ID %d killed\n", memdom_id);
     return rv;
 }
 
@@ -93,7 +93,7 @@ void *memdom_mmap(int memdom_id,
 		fprintf(stderr, "memdom_mmap_register(%d) failed\n", memdom_id);
         return NULL;
     }    
-    //rlog("Memdom ID %d registered for mmap\n", memdom_id);
+    rlog("Memdom ID %d registered for mmap\n", memdom_id);
     
     /* Call the actual mmap with memdom flag */
     flags |= MAP_MEMDOM;
@@ -105,7 +105,7 @@ void *memdom_mmap(int memdom_id,
     memdom[memdom_id]->start = base;
     memdom[memdom_id]->total_size = len;
 
-   // //rlog("Memdom ID %d mmaped at %p\n", memdom_id, base);
+   // rlog("Memdom ID %d mmaped at %p\n", memdom_id, base);
 
     //printf("[%s] memdom %d mmaped 0x%lx bytes at %p\n", __func__, memdom_id, len, base);
     return base;
@@ -117,10 +117,10 @@ unsigned long memdom_priv_get(int memdom_id, int smv_id){
     rv = sys_udom_mem_ops(UDOM_PRIV_OPS,memdom_id,smv_id,UDOM_GET,0);
 
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
-    //rlog("smv %d in memdom %d has privilege: 0x%x\n", smv_id, memdom_id, rv);
+    rlog("smv %d in memdom %d has privilege: 0x%x\n", smv_id, memdom_id, rv);
     // ! should return privilege
     return rv;
 }
@@ -130,10 +130,10 @@ int memdom_priv_add(int memdom_id, int smv_id, unsigned long privs){
     int rv = 0;
     rv = sys_udom_mem_ops(UDOM_PRIV_OPS,memdom_id,smv_id,UDOM_ADD,privs);
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
-    //rlog("smv %d in memdom %d has (after added)privilege: 0x%x\n", smv_id, memdom_id, rv);
+    rlog("smv %d in memdom %d has (after added)privilege: 0x%x\n", smv_id, memdom_id, rv);
     // ! should return privilege
     return rv;
 }
@@ -143,10 +143,10 @@ int memdom_priv_del(int memdom_id, int smv_id, unsigned long privs){
     int rv = 0;
     rv = sys_udom_mem_ops(UDOM_PRIV_OPS,memdom_id,smv_id,UDOM_REMOVE,privs);
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
-    //rlog("smv %d in memdom %d has (after deleted)privilege: 0x%x\n", smv_id, memdom_id, rv);    
+    rlog("smv %d in memdom %d has (after deleted)privilege: 0x%x\n", smv_id, memdom_id, rv);    
     // ! should return privilege
     return rv;
     
@@ -158,10 +158,10 @@ int memdom_main_id(void){
     int rv = 0;
     rv = sys_udom_mem_ops(UDOM_MAINID,0,0,NO_UDOM_PRIV_OPS,0);
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
-    //rlog("Global memdom id: %d\n", rv);    
+    rlog("Global memdom id: %d\n", rv);    
     return rv;
 }
 
@@ -173,10 +173,10 @@ int memdom_query_id(void *obj){
    // sprintf(buf, "memdom,queryid,%lu", addr);
     rv = sys_udom_mem_ops(UDOM_QUERYID,0,0,NO_UDOM_PRIV_OPS,0);
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
-    //rlog("obj in memdom %d\n", rv);    
+    rlog("obj in memdom %d\n", rv);    
     return rv;
 }
 
@@ -186,13 +186,13 @@ int memdom_private_id(void){
 #ifdef THREAD_PRIVATE_STACK
     rv = sys_udom_mem_ops(UDOM_PRIVID,0,0,NO_UDOM_PRIV_OPS,0);
     if( rv == -1 ){
-        //rlog("kernel responded error");
+        rlog("kernel responded error");
         return -1;
     }    
 #else
     rv = 0;
 #endif
-    //rlog("private memdom id: %d\n", rv);    
+    rlog("private memdom id: %d\n", rv);    
     return rv;
 }
 

@@ -19,6 +19,8 @@
 #include <linux/security.h>
 #include <linux/binfmts.h>
 #include <linux/cn_proc.h>
+#include <azure-sphere/difc.h>
+
 
 #if 0
 #define kdebug(FMT, ...)						\
@@ -329,6 +331,10 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 #ifdef CONFIG_KEYS
 		!p->cred->thread_keyring &&
 #endif
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+		!(clone_flags & CLONE_DIFC) &&
+#endif
 		clone_flags & CLONE_THREAD
 	    ) {
 		p->real_cred = get_cred(p->cred);
@@ -340,6 +346,34 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 		atomic_inc(&p->cred->user->processes);
 		return 0;
 	}
+
+	if (
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+		clone_flags & CLONE_DIFC &&
+#endif
+		clone_flags & CLONE_THREAD
+	    ) {
+			new = prepare_creds();
+			if (!new)
+				return -ENOMEM;
+
+			atomic_inc(&new->user->processes);
+			p->cred = p->real_cred = get_cred(new);
+			alter_cred_subscribers(new, 2);
+			validate_creds(new);
+			difc_lsm_debug("clone_flags\n");
+/*
+			if (clone_flags & CLONE_DIFC) {
+				difc_lsm_debug("clone_flags\n");
+				ret = difc_alloc_label(new,PLUS_CAPABILITY|MINUS_CAPABILITY ,SEC_LABEL);
+				if (ret < 0)
+						goto error_put;
+				}
+*/
+		    return 0;
+	}
+
+
 
 	new = prepare_creds();
 	if (!new)

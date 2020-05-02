@@ -53,12 +53,6 @@ static inline int sys_create_labeled_file(const char *pathname, int flags,mode_t
     return rv ? -errno : 0;
 }
 
-// label an existing file
-static inline int set_labeled_file(const char *pathname, struct label_struct *label)
-{
-    int rv = syscall(__NR_set_labeled_file, pathname, label);
-    return rv ? -errno : 0;
-}
 
 // drop a capability for declassification permanently
 static inline int sys_permanent_declassify(unsigned long long *cap_list, unsigned int len,
@@ -381,7 +375,7 @@ int modify_file_labels(const char *pathname, long secrecySet[], int sec_len, lon
     (*file_label.iList) = int_len;
     for (i = 0; i < int_len; i++)
         file_label.iList[i + 1] = (label_t)integritySet[i];
-    return set_labeled_file(pathname, &file_label);
+    return 0;//set_labeled_file(pathname, &file_label);
 }
 
 int do_permanent_declassification(capability_t labels[], int length, int type, int label_type)

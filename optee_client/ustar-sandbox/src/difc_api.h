@@ -82,8 +82,7 @@ typedef labelvec_t x_handlevec_t;
 #define __NR_udom_clone 418
 #define __NR_mkdir_labeled 419
 #define __NR_create_labeled 420
-#define __NR_set_labeled_file 421
-
+#define __NR_difc_open 421
 // should be removed: not used anymore
 #define __NR_clone_temp 500
 #define __NR_permanent_declassify 500
@@ -120,6 +119,12 @@ enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, EXISTS,NO_SMV_OPS};
 enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
 enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIVID,UDOM_PRIV_OPS};
 enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
+
+static inline int difc_open (const char *filename, int flags, enum label_types label_mode)
+{
+    int rv = syscall(__NR_difc_open, filename, flags,label_mode);
+    return rv ? -errno : 0;
+}
 
 int difc_replace_labels(long secrecySet[], int sec_len, long integritySet[], int int_len);
 int difc_set_label(unsigned long label, enum label_types ops);

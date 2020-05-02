@@ -436,6 +436,13 @@ void test_unallowed_file(void)
 
     struct stat *buf;
 
+    //int fd = open(filepath,O_CREAT|O_DIFC|O_RDWR);
+    int fd = difc_open(filepath,O_CREAT|O_RDWR,SEC_LABEL);
+    if (fd == -1) {
+        printf("[test_unallowed_file] faild to open %s\n", filepath);
+    }
+
+
     printf("[test_unallowed_file] pid %u \n", getpid());
     label1 = difc_create_label(2, SEC_LABEL); // creating labels with both + and - caps
 
@@ -450,20 +457,17 @@ void test_unallowed_file(void)
     int int_len = 0;
 
 
-    check = create_labeled_file(filepath, O_CREAT|O_RDWR, 0644, secrecySet, sec_len, integritySet, int_len);
+   // check = create_labeled_file(filepath, O_CREAT|O_RDWR, 0644, secrecySet, sec_len, integritySet, int_len);
 
-    if (check < 0)
-        printf("couldn't label file: %s \n", filepath);
-    else
-        printf("labeledd file: %s\n", filepath);
+   // if (check < 0)
+     //   printf("couldn't label file: %s \n", filepath);
+    //else
+      //  printf("labeledd file: %s\n", filepath);
 
-    int fd = open(filepath, O_RDONLY);
-    if (fd == -1) {
-        printf("[test_unallowed_file] faild to open %s\n", filepath);
-    }
+  
 
-    printf("[test_unallowed_file] opened labeld file %s\n", filepath);
-/*
+   /* printf("[test_unallowed_file] opened labeld file %s\n", filepath);
+
     buf = malloc(sizeof(struct stat));
 
     int ret = stat(filepath, buf);
@@ -476,12 +480,14 @@ void test_unallowed_file(void)
     close(fd);
 
     int thread_pid = clone(&test_unallowed_file_func, stack + STACK_SIZE,
-                           CLONE_THREAD | CLONE_SIGHAND | CLONE_VM, filepath);
+                           CLONE_THREAD|CLONE_DIFC | CLONE_SIGHAND | CLONE_VM, filepath);
 
     getchar();
     // pause();
 
-*/    
+    */
+
+   
 }
 
 void difc_threading_test_labeld(void)
@@ -640,8 +646,6 @@ int numbers[] = {65536};//512, 1024,2048 , 4096, 8192,16384,32768, 131072,524288
 
     int udom_id = udom_create();
        
-    printf("allocated udom: %d \n", udom_id);
-
     void* addr= NULL;//(void*)0x100000;
 
 // here we should check if prot is WO/RO/EO we should map to a predefined uTile instead of regular one
@@ -1148,13 +1152,28 @@ int sw_udom_test2(void)
 int swu_malloc(void){
     int i = 0;
     int *memdom_int[1024];
+    void* stack_base;
+   size_t stack_size=1024 * 1024;
+    int smv_id;
 
     smv_main_init(1);
     
-    pthread_mutex_init(&ulock, NULL);
+  //  pthread_mutex_init(&ulock, NULL);
 
     int memdom_id = memdom_create();
-    memdom_id = memdom_create();
+    smv_join_domain(memdom_id, 0);
+    memdom_priv_add(memdom_id, 0, MEMDOM_READ | MEMDOM_WRITE);
+
+  stack_base = (void*)memdom_mmap(memdom_id, 0, stack_size, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_MEMDOM, 0, 0);
+  if(stack_base == MAP_FAILED){
+    perror("mmap for thread stack: ");
+    return -1;
+  }
+    printf("after udommmap %d\n",memdom_id);
+	  free_list_init( memdom_id);
+
+    
     printf("memid %d \n",memdom_id);
     smv_join_domain(memdom_id, 0);
     memdom_priv_add(memdom_id, 0, MEMDOM_READ | MEMDOM_WRITE);
