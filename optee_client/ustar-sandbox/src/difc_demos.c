@@ -117,34 +117,17 @@ void difc_threading_test(void)
 
   printf("pid = %d\n", getpid());
     struct label_struct cur_label;
+    const int STACK_SIZE = 8 * 1024;
+    unsigned long label1 ;
 
-     int label1 = difc_create_label(2, SEC_LABEL); // creating labels with both + and - caps
+     label1 = difc_create_label(2, SEC_LABEL); // creating labels with both + and - caps
 
     if (label1 <= 0)
         printf("OS capability creation failed\n");
     else
         printf("OS capability creation SUCCESSED: %d\n", label1);
 
-    long secrecySet[1] = {label1};
-    int sec_len = 1;
-    long *integritySet = NULL;
-    int int_len = 0;
-
-    cur_label.sList[0] = (label_t)sec_len;
-
-    for (int i = 0; i < sec_len; i++) {
-        cur_label.sList[i + 1] = (label_t)secrecySet[i];
-        printf("[difc_threading_test] cur_label.sList[%d]: %lld \n", (i + 1),
-               cur_label.sList[i + 1]);
-    }
-
-    cur_label.iList[0] = (label_t)int_len;
-
-    for (int i = 0; i < int_len; i++) {
-        cur_label.iList[i + 1] = (label_t)integritySet[i];
-        printf("[difc_threading_test] cur_label.iList[%d]: %lld \n", (i + 1),
-               cur_label.iList[i + 1]);
-    }
+  
 
 
    //difc_replace_labels(secrecySet, sec_len, integritySet, int_len);
@@ -172,7 +155,7 @@ void difc_threading_test(void)
     }
   }
 
-  int N = 100;//10000
+  int N = 100000;//10000
   unsigned long long minlaunch = 999999;
   unsigned long long totallaunch = 0;
   unsigned long long minjoin = 999999;
@@ -197,7 +180,9 @@ void difc_threading_test(void)
     else{//udom mode
 
      //thread_create(&threadfunc2 , stackptr+getpagesize());
-     udom_thread_create(&threadfunc2 , stackptr+getpagesize(),&cur_label);
+    int utid=  clone(&task_func , stackptr+STACK_SIZE , CLONE_THREAD | CLONE_SIGHAND | CLONE_VM,NULL);
+
+    // udom_thread_create(&threadfunc2 , stackptr+getpagesize(),&cur_label);
 
      
    // clone(&task_func , stackptr+getpagesize() , CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND| CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID,NULL);

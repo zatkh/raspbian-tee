@@ -55,7 +55,8 @@ CFG_TEE_CORE_LOG_LEVEL ?= 1
 # If user-mode library libutils.a is built with CFG_TEE_TA_LOG_LEVEL=0,
 # TA tracing is disabled regardless of the value of CFG_TEE_TA_LOG_LEVEL
 # when the TA is built.
-CFG_TEE_TA_LOG_LEVEL ?= 1
+CFG_TEE_TA_LOG_LEVEL ?= 4
+
 
 # TA enablement
 # When defined to "y", TA traces are output according to
@@ -73,7 +74,7 @@ CFG_TEE_CORE_TA_TRACE ?= y
 # - To debug TEE core allocations: build OP-TEE with:
 #   $ make CFG_TEE_CORE_MALLOC_DEBUG=y CFG_TEE_CORE_LOG_LEVEL=3
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
-CFG_TEE_TA_MALLOC_DEBUG ?= n
+CFG_TEE_TA_MALLOC_DEBUG ?= y
 
 # Mask to select which messages are prefixed with long debugging information
 # (severity, core ID, thread ID, component name, function name, line number)

@@ -2586,12 +2586,14 @@ asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long sm
 
 static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
-  LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
-	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
+ 
 	//LSM_HOOK_INIT(cred_free, difc_cred_free),
 //LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
 
 //for basline test
+
+ 	LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
+	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),

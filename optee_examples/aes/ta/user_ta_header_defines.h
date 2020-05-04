@@ -37,8 +37,10 @@
 #define TA_UUID				TA_AES_UUID
 
 #define TA_FLAGS			TA_FLAG_EXEC_DDR
-#define TA_STACK_SIZE			(2 * 1024)
-#define TA_DATA_SIZE			(32 * 1024)
+#define TA_STACK_SIZE			(1 * 1024 * 1024)
+
+/* Provisioned heap size for TEE_Malloc() and friends */
+#define TA_DATA_SIZE			(8* 1024 * 1024)
 
 #define TA_CURRENT_TA_EXT_PROPERTIES \
     { "gp.ta.description", USER_TA_PROP_TYPE_STRING, \
