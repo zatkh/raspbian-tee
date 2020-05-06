@@ -489,6 +489,133 @@ printf("udom_mpro avg1 (%lld) itter :%d time\n",(sum2/it2),itter);
 	return 0;
 }
 
+
+int all_test(int itter, int mode)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_HELLO_WORLD_UUID;
+	uint32_t err_origin;
+	long long sub=0;
+	//struct clock_t start;
+	//struct clock_t end;
+
+
+if (mode ==2){
+for(int i=0;i<itter;i++)
+
+{
+	clock_t start = clock();
+	
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	res = TEEC_OpenSession(&ctx, &sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "teec_difc_udom_create failed with code 0x%x origin 0x%x",
+			res, err_origin);
+
+
+	clock_t end = clock();
+    printf("CREATE: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+
+
+	memset(&op, 0, sizeof(op));
+
+
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INOUT, TEEC_NONE,
+					 TEEC_NONE, TEEC_NONE);
+	op.params[0].value.a = 42;
+
+
+	start = clock();
+	res = TEEC_InvokeCommand(&sess, TA_HELLO_WORLD_CMD_INC_VALUE, &op,
+				 &err_origin);
+end = clock();
+    printf("TEEC_InvokeCommand: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+	//printf("TA incremented value to %d\n", op.params[0].value.a);
+
+	/*
+	 * We're done with the TA, close the session and
+	 * destroy the context.
+	 *
+	 * The TA will print "Goodbye!" in the log when the
+	 * session is closed.
+	 */
+start = clock();
+		TEEC_CloseSession(&sess);
+
+		TEEC_FinalizeContext(&ctx);
+
+end = clock();
+    printf("DELETE: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+}
+}
+
+else if (mode ==1){
+for(int i=0;i<itter;i++)
+
+{
+	clock_t start = clock();
+	res = difc_create_enclave(&ctx, &sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	clock_t end = clock();
+    printf("DIFC_CREATE: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+	if (res != TEEC_SUCCESS)
+		errx(1, "difc_create_enclave failed with code 0x%x origin ",
+			res);
+
+
+	memset(&op, 0, sizeof(op));
+
+
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INOUT, TEEC_NONE,
+					 TEEC_NONE, TEEC_NONE);
+	op.params[0].value.a = 42;
+
+
+	start = clock();
+	res = TEEC_InvokeCommand(&sess, TA_HELLO_WORLD_CMD_INC_VALUE, &op,
+				 &err_origin);
+end = clock();
+    printf("DIFC_TEEC_InvokeCommand: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+	//printf("TA incremented value to %d\n", op.params[0].value.a);
+
+	/*
+	 * We're done with the TA, close the session and
+	 * destroy the context.
+	 *
+	 * The TA will print "Goodbye!" in the log when the
+	 * session is closed.
+	 */
+start = clock();
+		difc_cleanup_enclave(&sess);
+
+end = clock();
+    printf("DIFC_DELETE: %f\n", (double)(end-start) / CLOCKS_PER_SEC);
+}
+}
+	return 0;
+}
 int main(int argc, char *argv[])
 {
      if (argc >= 3) 
@@ -503,6 +630,10 @@ int main(int argc, char *argv[])
 				printf("shm_mprot with itter: %d\n",atoi(argv[2]));
           		mprot_test(atoi(argv[2]));
         } 
+		else if (strcmp(argv[1], "-all") == 0) {
+          		all_test(atoi(argv[2]),atoi(argv[3]));
+        } 
+
 
 	
 	

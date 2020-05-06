@@ -3,7 +3,7 @@ include ${TEE_SDK_DIR}/config.mk
 
 TEE_SDK_DIR = $(shell pwd)
 
-all: arm-tf-final optee-client-final optee-examples-final linux-final boot-final
+all: arm-tf-final optee-client-final optee-examples-final linux-final boot-final 
 
 ################################################################################
 # ARM Trust Firmware
@@ -86,7 +86,7 @@ optee-os:
 OPTEE_OS_CLEAN_FLAGS ?= O=out/arm CFG_ARM32_core=y
 
 .PHONY: optee-os-clean
-optee-os-clean:
+optee-os-clean: xtest-clean-common
 	$(MAKE) -j8 -C ${TEE_SDK_DIR}/optee_os $(OPTEE_OS_CLEAN_FLAGS) clean
 
 
@@ -121,6 +121,40 @@ clean: linux-clean optee-os-clean optee-client-clean arm-tf-clean u-boot-clean
 install:
 .PHONY: install
 
+
+
+################################################################################
+# xtest / optee_test
+################################################################################
+OPTEE_TEST_OUT_PATH		?= $(TEE_SDK_DIR)/optee_test/out
+OPTEE_TEST_PATH ?= $(TEE_SDK_DIR)/optee_test/
+COMPILE_NS_USER ?= 32
+
+XTEST_COMMON_FLAGS ?= CROSS_COMPILE_HOST=$(CROSS_COMPILE)\
+	CROSS_COMPILE_TA=$(CROSS_COMPILE) \
+	TA_DEV_KIT_DIR=${TEE_SDK_DIR}/optee_os/out/arm/export-ta_arm32 \
+	OPTEE_CLIENT_EXPORT=${TEE_SDK_DIR}/optee_client/out/export  \
+	COMPILE_NS_USER=$(COMPILE_NS_USER) \
+	O=$(OPTEE_TEST_OUT_PATH) 
+
+.PHONY: xtest-common
+xtest-common: optee-os optee-client
+	$(MAKE) -C $(OPTEE_TEST_PATH) $(XTEST_COMMON_FLAGS)
+
+XTEST_CLEAN_COMMON_FLAGS ?= O=$(OPTEE_TEST_OUT_PATH) \
+	TA_DEV_KIT_DIR=${TEE_SDK_DIR}/optee_os/out/arm/export-ta_arm32 \
+
+.PHONY: xtest-clean-common
+xtest-clean-common:
+	$(MAKE) -C $(OPTEE_TEST_PATH) $(XTEST_CLEAN_COMMON_FLAGS) clean
+
+XTEST_PATCH_COMMON_FLAGS ?= $(XTEST_COMMON_FLAGS)
+
+.PHONY: xtest-patch-common
+xtest-patch-common:
+	$(MAKE) -C $(OPTEE_TEST_PATH) $(XTEST_PATCH_COMMON_FLAGS) patch
+
+
 ################################################################################
 # OP-TEE examples
 ################################################################################
@@ -147,6 +181,8 @@ optee-examples-final: optee-examples
 	cp ${TEE_SDK_DIR}/optee_examples/random/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/secure_storage/ta/*.ta ./out/rootfs/lib/optee_armtz/
 	cp ${TEE_SDK_DIR}/optee_examples/darknetp/ta/*.ta ./out/rootfs/lib/optee_armtz/
+
+
 
 
 ################################################################################

@@ -40,7 +40,7 @@
 #define TA_STACK_SIZE			(1 * 1024 * 1024)
 
 /* Provisioned heap size for TEE_Malloc() and friends */
-#define TA_DATA_SIZE			(8* 1024 * 1024)
+#define TA_DATA_SIZE			(16* 1024 * 1024)
 
 #define TA_CURRENT_TA_EXT_PROPERTIES \
     { "gp.ta.description", USER_TA_PROP_TYPE_STRING, \
