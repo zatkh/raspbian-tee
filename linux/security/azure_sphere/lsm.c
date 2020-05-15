@@ -2591,7 +2591,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 //LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
 
 //for basline test
-
+/*
  	LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),

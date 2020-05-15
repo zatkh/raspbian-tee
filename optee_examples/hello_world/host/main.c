@@ -34,6 +34,19 @@
 #include <sys/time.h>
 #include <time.h>
 #include <inttypes.h>
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+
+FILE *fresult;
+FILE *fs_results;
+#define _1_SEC_TO_NS 1000000000
+
+
+static unsigned long diff_time(struct timespec * op1, struct timespec * op2){
+  return (op1->tv_sec - op2->tv_sec)*_1_SEC_TO_NS + op1->tv_nsec - op2->tv_nsec;
+}
 
 /* OP-TEE TEE client API (built by optee_client) */
 #include <tee_client_api.h>
@@ -490,6 +503,8 @@ printf("udom_mpro avg1 (%lld) itter :%d time\n",(sum2/it2),itter);
 }
 
 
+
+
 int all_test(int itter, int mode)
 {
 	TEEC_Result res;
@@ -616,6 +631,93 @@ end = clock();
 }
 	return 0;
 }
+
+
+void bench_test_fs (size_t ITERATION) {
+
+   	const char* c = "this is a sgx fs test";
+	size_t len= strlen(c);
+    int fd;   
+   	char buffer[len];
+  	unsigned long diff = 0;
+	unsigned long avg = 0;
+    struct timespec init_second, current_time;
+    struct timespec * init_secondp = &init_second, \
+                        * current_timep = &current_time;
+					 
+    fs_results = fopen("fsresults.txt", "ab+");
+    if (fs_results == NULL)
+        {
+            printf("Error opening file!\n");
+            exit(1);
+        }
+ 	fprintf(fs_results,"*****************bench_test_fs**********************\n");
+    fprintf(fs_results,"iter: %ld \n",ITERATION);
+//open
+	for(int i=0;i<ITERATION;i++)
+	{	
+		clock_gettime(CLOCK_MONOTONIC_RAW, init_secondp);
+		    fd=open("foobar.txt", O_RDWR | O_CREAT, S_IRWXU);
+		clock_gettime(CLOCK_MONOTONIC_RAW, current_timep);
+		diff = diff_time(current_timep, init_secondp);
+		avg +=diff;
+	}
+		fprintf(fs_results, "open average :%ld\n",(unsigned long)(avg/ITERATION));
+
+//write
+	avg=0;
+	for(int i=0;i<ITERATION;i++)
+	{	
+		clock_gettime(CLOCK_MONOTONIC_RAW, init_secondp);
+		    write(fd, c, strlen(c)); 
+		clock_gettime(CLOCK_MONOTONIC_RAW, current_timep);
+		diff = diff_time(current_timep, init_secondp);
+		avg +=diff;
+	}
+		fprintf(fs_results, "write average :%ld\n",(unsigned long)(avg/ITERATION));
+
+//seek
+	avg=0;
+	for(int i=0;i<ITERATION;i++)
+	{	
+		clock_gettime(CLOCK_MONOTONIC_RAW, init_secondp);
+		lseek(fd, 0, SEEK_SET); 
+		clock_gettime(CLOCK_MONOTONIC_RAW, current_timep);
+		diff = diff_time(current_timep, init_secondp);
+		avg +=diff;
+	}
+		fprintf(fs_results, "seek average :%ld\n",(unsigned long)(avg/ITERATION));
+
+//read
+	avg=0;
+	for(int i=0;i<ITERATION;i++)
+	{	
+		clock_gettime(CLOCK_MONOTONIC_RAW, init_secondp);
+		    read(fd, buffer, len); 
+		clock_gettime(CLOCK_MONOTONIC_RAW, current_timep); 
+		printf("[test_file] %s\n",buffer);
+		diff = diff_time(current_timep, init_secondp);
+		avg +=diff;
+	}
+		fprintf(fs_results, "read average :%ld\n",(unsigned long)(avg/ITERATION));
+
+//close
+	avg=0;
+	for(int i=0;i<ITERATION;i++)
+	{	
+		clock_gettime(CLOCK_MONOTONIC_RAW, init_secondp);
+		    close(fd);
+		clock_gettime(CLOCK_MONOTONIC_RAW, current_timep); 
+		diff = diff_time(current_timep, init_secondp);
+		avg +=diff;
+	}
+	fprintf(fs_results, "close average :%ld\n",(unsigned long)(avg/ITERATION));
+    fprintf(fs_results,"**********************************************\n");
+    fclose(fs_results); 
+
+}
+
+
 int main(int argc, char *argv[])
 {
      if (argc >= 3) 
@@ -632,6 +734,9 @@ int main(int argc, char *argv[])
         } 
 		else if (strcmp(argv[1], "-all") == 0) {
           		all_test(atoi(argv[2]),atoi(argv[3]));
+        } 
+		else if (strcmp(argv[1], "-fs") == 0) {
+          		bench_test_fs(atoi(argv[2]));
         } 
 
 

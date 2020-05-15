@@ -1,2 +1,2 @@
 global-incdirs-y += include
-srcs-y += secure_storage_ta.c
+srcs-y +=  storage.c secure_storage_ta.c
