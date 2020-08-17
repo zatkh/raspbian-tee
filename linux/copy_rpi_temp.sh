@@ -25,7 +25,7 @@ LINUX_MODULES_DIR=$PWD/../out/rootfs/lib/modules/4.19.42-v7/
 sudo cp -R $LINUX_BOOT_DIR/dts/*.dtb $FS/boot/
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $FS/boot/overlays/
 #sudo cp -R $LINUX_MODULES_DIR $FS/lib/modules
-sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernely.img
+#sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernely.img
 sudo cp -R  $LINUX_BOOT_DIR/dts/*.dtb $BOOT
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $BOOT/overlays/
 sudo cp -R $PWD/../out/rootfs/bin/* $FS/bin/
