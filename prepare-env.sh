@@ -78,16 +78,15 @@
 	}
 }
 
-[ -f "./dl/linux.tar.gz" ] && {
-	echo  "\033[32mlinux package existed.\n\033[0m"
-} || {
-	echo  "\033[32mlinux downloading...\n\033[0m"
-	wget -O dl/linux.tar.gz https://github.com/raspberrypi/linux/archive/raspberrypi-kernel_1.20190215-1.tar.gz
-}
 
 [ ! -d "./linux" ] && {
+	[ -f "./dl/linux.tar.gz" ] && {
+		echo  "\033[32mlinux package existed.\n\033[0m"
+	} || {
+		echo  "\033[32mlinux downloading...\n\033[0m"
+		wget -O dl/linux.tar.gz https://github.com/raspberrypi/linux/archive/raspberrypi-kernel_1.20190215-1.tar.gz
+	}
 	tar zxf dl/linux.tar.gz && {
 		mv linux-* linux
 	}
 }
-
