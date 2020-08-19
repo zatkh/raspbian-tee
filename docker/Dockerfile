@@ -3,23 +3,23 @@ FROM ubuntu:20.04
 RUN sed -i '/deb-src/s/^# //' /etc/apt/sources.list && \
 	dpkg --add-architecture i386 && \
 	apt-get update && \
-	apt-get install -y build-essential git gcc-arm-linux-gnueabihf sudo bison flex libssl-dev bc kmod wget vim u-boot-tools
+	apt-get install -y build-essential git sudo bison flex libssl-dev bc kmod wget vim u-boot-tools
 
 # Download optee toolchains
 RUN mkdir -p /toolchains && \
 	cd /toolchains && \
-	wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.2-2019.01/gcc-arm-8.2-2019.01-x86_64-arm-linux-gnueabihf.tar.xz && \
-	wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.2-2019.01/gcc-arm-8.2-2019.01-x86_64-aarch64-linux-gnu.tar.xz
+	wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz && \
+	wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz
 
 RUN cd /toolchains && \
 	mkdir aarch32 && \
 	umask 022 && \
-	tar xf gcc-arm-8.2-2019.01-x86_64-arm-linux-gnueabihf.tar.xz -C aarch32 --strip-components=1
+	tar xf *-arm-linux-gnueabihf.tar.xz -C aarch32 --strip-components=1
 
 RUN cd /toolchains && \
 	mkdir aarch64 && \
 	umask 022 && \
-	tar xf gcc-arm-8.2-2019.01-x86_64-aarch64-linux-gnu.tar.xz -C aarch64 --strip-components=1
+	tar xf *-aarch64-linux-gnu.tar.xz -C aarch64 --strip-components=1
 
 ENV CROSS_COMPILE /toolchains/aarch32/bin/arm-linux-gnueabihf-
 ENV CROSS_COMPILE_AARCH64 /toolchains/aarch64/bin/aarch64-linux-gnu-
