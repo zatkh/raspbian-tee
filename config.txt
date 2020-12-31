@@ -61,3 +61,5 @@ kernel_address=0x02000000
 
 device_tree_address=0x01000000
 
+# enable 64 bit mode on newer (~ >2019-07-10) raspbian images
+arm_64bit=1
